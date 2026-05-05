@@ -132,6 +132,50 @@ async def _seed_permissions():
         logger.info("Default permissions seeded")
 
 
+# Permissions every role should have automatically
+UNIVERSAL_PERMISSIONS = ["profile:view", "profile:edit"]
+
+
+async def _seed_default_role_permissions():
+    """Ensure every role has profile:view and profile:edit permissions."""
+    from app.core.database import AsyncSessionLocal
+    from app.models.role import Role
+    from app.models.permission import Permission
+    from app.models.role_permission import RolePermission
+    from sqlalchemy import select
+    import uuid
+
+    async with AsyncSessionLocal() as db:
+        # Fetch all roles
+        roles = (await db.execute(select(Role))).scalars().all()
+
+        # Fetch the universal permission rows
+        perm_result = await db.execute(
+            select(Permission).where(Permission.code.in_(UNIVERSAL_PERMISSIONS))
+        )
+        permissions = perm_result.scalars().all()
+
+        for role in roles:
+            for perm in permissions:
+                # Check if mapping already exists
+                exists = await db.execute(
+                    select(RolePermission).where(
+                        RolePermission.role_id == role.id,
+                        RolePermission.permission_id == perm.id,
+                    )
+                )
+                if not exists.scalar_one_or_none():
+                    db.add(RolePermission(
+                        id=str(uuid.uuid4()),
+                        role_id=role.id,
+                        permission_id=perm.id,
+                    ))
+                    logger.info(f"Linked {perm.code} -> role '{role.name}'")
+
+        await db.commit()
+        logger.info("Default role permissions seeded")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
@@ -139,6 +183,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await _seed_permissions()
     await _seed_super_admin()
+    await _seed_default_role_permissions()
     yield
     logger.info("Shutting down")
 
