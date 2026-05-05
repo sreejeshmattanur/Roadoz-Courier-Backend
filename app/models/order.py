@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, Numeric, Integer, text
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Numeric, Integer, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -12,17 +12,19 @@ from sqlalchemy import Enum as SqlEnum
 
 
 class OrderStatus(str, Enum):
-    PROCESSING = "processing"
-    MANIFESTED = "manifested"
-    IN_TRANSIT = "in_transit"
-    NDR = "ndr"
-    OFD = "ofd"
-    DELIVERED = "delivered"
-    RTO_IN_TRANSIT = "rto_in_transit"
-    RTO_DELIVERED = "rto_delivered"
-    RETURNED = "returned"
-    CANCELLED = "cancelled"
-    LOST = "lost"
+    PROCESSING = "Processing"
+    MANIFESTED = "Manifested"
+    IN_TRANSIT = "In_transit"
+    NDR = "Ndr"
+    OFD = "Ofd"
+    DELIVERED = "Delivered"
+    RTO_IN_TRANSIT = "Rto_in_transit"
+    RTO_DELIVERED = "Rto_delivered"
+    RETURNED = "Returned"
+    CANCELLED = "Cancelled"
+    LOST = "Lost"
+    PICKED = "Picked"           # ← add this
+    DISPATCHED = "Dispatched" 
 
 class Order(Base):
     __tablename__ = "orders"
@@ -40,7 +42,9 @@ class Order(Base):
     consignee_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("consignees.id", ondelete="RESTRICT"), nullable=False
     )
-
+    warehouse_addresses_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("warehouse_addresses.id", ondelete="RESTRICT"), nullable=True
+    )
     # Payment
     payment_method: Mapped[str] = mapped_column(String(20), nullable=False)  # COD | Prepaid | To Pay
     cod_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when COD
@@ -94,6 +98,7 @@ class Order(Base):
     packages = relationship("OrderPackage", back_populates="order", cascade="all, delete-orphan", lazy="selectin")
     pickup_address = relationship("PickupAddress", lazy="selectin")
     consignee = relationship("Consignee", lazy="selectin")
+    warehouseaddress = relationship("WareHouseAddress", lazy="selectin")
 
 
 class OrderItem(Base):
@@ -139,3 +144,50 @@ class OrderPackage(Base):
     )
 
     order = relationship("Order", back_populates="packages")
+
+
+
+ 
+
+class ConsigneeToDelivery(Base):
+    __tablename__ = "consigneestodelivery"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pincode = Column(String(10), nullable=False)
+    status = Column(String(20), default="pending")
+
+    order_id = Column(String(36), ForeignKey("orders.id", ondelete="CASCADE"))
+    consignee_id = Column(String(36), ForeignKey("consignees.id", ondelete="CASCADE"))
+
+    order = relationship("Order", backref="consignees_to_delivery")
+    consignee = relationship("Consignee", backref="consignees_to_delivery")
+
+
+    
+class PickupToConsignees(Base):
+    __tablename__ = "pickupstoconsignees"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pincode = Column(String(10), nullable=False)
+    status = Column(String(20), default="pending")
+
+    order_id = Column(String(36), ForeignKey("orders.id", ondelete="CASCADE"))
+    pickup_addresses_id = Column(String(36), ForeignKey("pickup_addresses.id", ondelete="CASCADE"))
+
+    order = relationship("Order", backref="pickup_to_consignees")
+    pickup_address = relationship("PickupAddress", backref="pickup_to_consignees")  
+    
+    
+class WarehouseToDelivery(Base):
+    __tablename__ = "warehousetodelivery"
+
+    id = Column(Integer, primary_key=True, index=True)
+    pincode = Column(String(10), nullable=False)
+    status = Column(String(20), default="pending")
+
+    order_id = Column(String(36), ForeignKey("orders.id", ondelete="CASCADE"))
+    warehouse_addresses_id = Column(String(36), ForeignKey("warehouse_addresses.id", ondelete="CASCADE"))
+
+    order = relationship("Order", backref="warehouse_to_delivery")
+    warehouse_address = relationship("WareHouseAddress", backref="warehouse_to_delivery")  
+    

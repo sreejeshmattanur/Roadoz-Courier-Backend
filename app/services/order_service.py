@@ -11,6 +11,8 @@ from app.models.user import User
 from app.models.franchise import Franchise
 from app.models.pickup_address import PickupAddress
 from app.models.consignee import Consignee
+from app.models.warehouse import WareHouseAddress
+from app.models.order import Order, OrderItem, OrderPackage
 from app.models.order import Order, OrderItem, OrderPackage,OrderStatus
 from app.models.role import Role
 from app.models.user_role import UserRole
@@ -266,6 +268,11 @@ async def create_order(
     ).scalar_one_or_none()
     if not consignee:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Consignee not found")
+    warehouse_addresses= (
+        await db.execute(select(WareHouseAddress).where(WareHouseAddress.id == data.warehouse_addresses_id))
+    ).scalar_one_or_none()
+    if not warehouse_addresses:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Warehouse not found")
 
     franchise_id = await _resolve_franchise_id(db, current_user)
     order_number = await _generate_order_number(db)
@@ -277,6 +284,7 @@ async def create_order(
         order_type=data.order_type.value,
         pickup_address_id=data.pickup_address_id,
         consignee_id=data.consignee_id,
+        warehouse_addresses_id=data.warehouse_addresses_id,
         payment_method=data.payment_method.value,
         cod_amount=data.cod_amount,
         to_pay_amount=data.to_pay_amount,
