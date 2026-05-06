@@ -24,6 +24,7 @@ from app.schemas.order import (
     ConsigneeCreate,
     ConsigneeOut,
     ConsigneeListResponse,
+    ConsigneeUpdate,
     ConsigneeStatusUpdate,
     OrderCreate,
     OrderOut,
@@ -193,7 +194,10 @@ async def create_pickup_address(
 
 
 async def search_consignees(
-    db: AsyncSession, current_user: User, search: str | None = None
+    db: AsyncSession, current_user: User,
+    search: str | None = None,
+    page: int = 1,
+    limit: int = 25,
 ) -> ConsigneeListResponse:
     franchise_id = await _resolve_franchise_id(db, current_user)
 
@@ -217,12 +221,16 @@ async def search_consignees(
         count_query = count_query.where(search_filter)
 
     total = (await db.execute(count_query)).scalar_one()
-    result = await db.execute(query.order_by(Consignee.created_at.desc()).limit(50))
+    offset = (page - 1) * limit
+    result = await db.execute(query.order_by(Consignee.created_at.desc()).offset(offset).limit(limit))
     consignees = result.scalars().all()
 
     return ConsigneeListResponse(
         items=[ConsigneeOut.model_validate(c) for c in consignees],
         total=total,
+        page=page,
+        limit=limit,
+        pages=math.ceil(total / limit) if total > 0 else 0,
     )
 
 
@@ -251,8 +259,8 @@ async def create_consignee(
     return ConsigneeOut.model_validate(consignee)
 
 
-async def update_consignee_status(
-    db: AsyncSession, consignee_id: str, data: ConsigneeStatusUpdate, current_user: User
+async def update_consignee(
+    db: AsyncSession, consignee_id: str, data: ConsigneeUpdate, current_user: User
 ) -> ConsigneeOut:
     result = await db.execute(select(Consignee).where(Consignee.id == consignee_id))
     consignee = result.scalar_one_or_none()
@@ -265,10 +273,49 @@ async def update_consignee_status(
     elif not franchise_id and consignee.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    consignee.status = data.status
+    # Update only provided fields
+    if data.name is not None:
+        consignee.name = data.name
+    if data.mobile is not None:
+        consignee.mobile = data.mobile
+    if data.alternate_mobile is not None:
+        consignee.alternate_mobile = data.alternate_mobile
+    if data.email is not None:
+        consignee.email = data.email
+    if data.address_line_1 is not None:
+        consignee.address_line_1 = data.address_line_1
+    if data.address_line_2 is not None:
+        consignee.address_line_2 = data.address_line_2
+    if data.pincode is not None:
+        consignee.pincode = data.pincode
+    if data.city is not None:
+        consignee.city = data.city
+    if data.state is not None:
+        consignee.state = data.state
+    if data.status is not None:
+        consignee.status = data.status
+
     await db.flush()
     await db.refresh(consignee)
     return ConsigneeOut.model_validate(consignee)
+
+
+async def delete_consignee(
+    db: AsyncSession, consignee_id: str, current_user: User
+) -> None:
+    result = await db.execute(select(Consignee).where(Consignee.id == consignee_id))
+    consignee = result.scalar_one_or_none()
+    if not consignee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consignee not found")
+
+    franchise_id = await _resolve_franchise_id(db, current_user)
+    if franchise_id and consignee.franchise_id != franchise_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    elif not franchise_id and consignee.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    await db.delete(consignee)
+    await db.flush()
 
 
 # ── Order ──────────────────────────────────────────────────────────────────

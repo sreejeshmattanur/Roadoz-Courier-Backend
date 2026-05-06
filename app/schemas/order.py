@@ -99,6 +99,22 @@ class ConsigneeOut(BaseModel):
 class ConsigneeListResponse(BaseModel):
     items: List[ConsigneeOut]
     total: int
+    page: int
+    limit: int
+    pages: int
+
+
+class ConsigneeUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+    mobile: Optional[str] = Field(None, min_length=1, max_length=20)
+    alternate_mobile: Optional[str] = Field(None, max_length=20)
+    email: Optional[str] = Field(None, max_length=255)
+    address_line_1: Optional[str] = Field(None, min_length=1, max_length=500)
+    address_line_2: Optional[str] = Field(None, max_length=500)
+    pincode: Optional[str] = Field(None, min_length=1, max_length=10)
+    city: Optional[str] = Field(None, min_length=1, max_length=100)
+    state: Optional[str] = Field(None, min_length=1, max_length=100)
+    status: Optional[str] = Field(None, pattern="^(active|inactive)$", description="Must be 'active' or 'inactive'")
 
 
 class ConsigneeStatusUpdate(BaseModel):
