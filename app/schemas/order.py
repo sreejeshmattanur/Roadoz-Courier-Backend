@@ -3,7 +3,7 @@ from typing import Optional, List
 from datetime import datetime
 from enum import Enum
 from app.models.order import OrderStatus
-
+from datetime import date
 # ── Enums ──────────────────────────────────────────────────────────────────
 
 
@@ -295,3 +295,7 @@ class BulkOrderResponse(BaseModel):
     failed: int
     orders: List[OrderOut]
     errors: List[BulkOrderError]
+
+
+class TodayStatusRequest(BaseModel):
+     date: date                 
