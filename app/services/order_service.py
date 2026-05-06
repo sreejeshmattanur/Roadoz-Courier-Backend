@@ -12,8 +12,7 @@ from app.models.franchise import Franchise
 from app.models.pickup_address import PickupAddress
 from app.models.consignee import Consignee
 from app.models.warehouse import WareHouseAddress
-from app.models.order import Order, OrderItem, OrderPackage
-from app.models.order import Order, OrderItem, OrderPackage,OrderStatus
+from app.models.order import Order, OrderItem, OrderPackage, OrderStatus
 from app.models.role import Role
 from app.models.user_role import UserRole
 from app.services.wallet_service import debit_for_order
@@ -31,7 +30,9 @@ from app.schemas.order import (
     OrderPackageOut,
     OrderListResponse,
     WeightSummary,
-    OrderStatus
+    BulkOrderCreate,
+    BulkOrderError,
+    BulkOrderResponse,
 )
 from typing import List, Optional,Tuple
 from sqlalchemy.orm import Session
@@ -356,6 +357,36 @@ async def create_order(
     await db.refresh(order, attribute_names=["items", "packages", "pickup_address", "consignee"])
 
     return _build_order_out(order)
+
+
+async def create_bulk_orders(
+    db: AsyncSession, data: BulkOrderCreate, current_user: User
+) -> BulkOrderResponse:
+    """Create multiple orders in one request. Each order is processed in its own
+    savepoint so a single failure does not roll back the entire batch."""
+    created_orders: list[OrderOut] = []
+    errors: list[BulkOrderError] = []
+
+    for idx, order_data in enumerate(data.orders):
+        try:
+            async with db.begin_nested():
+                order_out = await create_order(db, order_data, current_user)
+                created_orders.append(order_out)
+        except HTTPException as exc:
+            errors.append(BulkOrderError(index=idx, error=exc.detail))
+        except Exception as exc:
+            logger.error(f"Bulk order index {idx} failed: {exc}")
+            errors.append(BulkOrderError(index=idx, error=str(exc)))
+
+    await db.commit()
+
+    return BulkOrderResponse(
+        total_submitted=len(data.orders),
+        successful=len(created_orders),
+        failed=len(errors),
+        orders=created_orders,
+        errors=errors,
+    )
 
 
 async def list_orders(
