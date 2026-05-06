@@ -256,3 +256,21 @@ class OrderStatusListResponse(BaseModel):
     total: int
     status_filter: Optional[OrderStatus]
     data: List[OrderResponse]
+# ── Bulk Order Create ─────────────────────────────────────────────────────
+
+
+class BulkOrderCreate(BaseModel):
+    orders: List[OrderCreate] = Field(..., min_length=1, max_length=50, description="List of orders to create (max 50)")
+
+
+class BulkOrderError(BaseModel):
+    index: int
+    error: str
+
+
+class BulkOrderResponse(BaseModel):
+    total_submitted: int
+    successful: int
+    failed: int
+    orders: List[OrderOut]
+    errors: List[BulkOrderError]
