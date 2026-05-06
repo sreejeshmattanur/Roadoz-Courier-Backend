@@ -24,6 +24,8 @@ from app.schemas.order import (
     OrderCreate,
     OrderOut,
     OrderListResponse,
+    BulkOrderCreate,
+    BulkOrderResponse,
     LocationRequest,
     OrderStatusListResponse,
 
@@ -34,6 +36,7 @@ from app.services.order_service import (
     search_consignees,
     create_consignee,
     create_order,
+    create_bulk_orders,
     list_orders,
     get_order,
     get_filtered_orders_service
@@ -117,6 +120,16 @@ async def create_order_endpoint(
     _: User = Depends(require_permission("orders:create")),
 ):
     return await create_order(db, data, current_user)
+
+
+@router.post("/bulk", response_model=BulkOrderResponse, status_code=200)
+async def create_bulk_orders_endpoint(
+    data: BulkOrderCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:create")),
+):
+    return await create_bulk_orders(db, data, current_user)
 
 
 @router.get("", response_model=OrderListResponse)
