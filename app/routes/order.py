@@ -529,6 +529,7 @@ async def get_pincode_from_gps(
         )
         db.add(pickup_to_consignee)
         order.status = OrderStatus.PICKED
+        order.updated_at = datetime.utcnow()
 
         await db.commit()
         await db.refresh(pickup_to_consignee)
@@ -567,6 +568,7 @@ async def get_pincode_from_gps(
         )
         db.add(pickup_to_consignee)
         order.status = OrderStatus.DISPATCHED
+        order.updated_at = datetime.utcnow()
 
         await db.commit()
         await db.refresh(pickup_to_consignee)
@@ -608,6 +610,7 @@ async def get_pincode_from_gps(
         )
         db.add(consignee_to_delivery)
         order.status = OrderStatus.DELIVERED
+        order.updated_at = datetime.utcnow()
 
         await db.commit()
         await db.refresh(consignee_to_delivery)
@@ -631,3 +634,241 @@ async def get_pincode_from_gps(
 
     else:
         raise HTTPException(status_code=400, detail="GPS location does not match pickup or consignee pincode")
+
+from enum import Enum as PyEnum
+
+class FilterableStatus(str, PyEnum):
+    DISPATCHED = "Dispatched"
+    PICKED = "Picked"
+    CANCELLED = "Cancelled"
+    DELIVERED = "Delivered"
+
+
+
+
+
+
+
+from datetime import datetime, date
+from sqlalchemy import select, func
+
+# @router.get("/orders/today-status")
+# async def get_today_status_orders(
+#     status: FilterableStatus = Query(..., description="Dispatched | Picked | Cancelled | Delivered"),
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+# ):
+#     today = date.today()  # e.g. 2026-05-06
+
+#     stmt = (
+#         select(Order)
+#         .where(
+#             Order.created_by == current_user.id,
+#             Order.status == status.value,
+#             func.date(Order.updated_at) == today 
+#         )
+#         .order_by(Order.updated_at.desc()))
+
+#     result = await db.execute(stmt)
+#     orders = result.scalars().all()
+#     print("currenct user ",current_user.id)
+#     # print('ordersuser ',orders.created_by)
+#     for o in orders:
+#        print('ordersuser ', o.created_by)
+#     if not orders:
+#         raise HTTPException(status_code=404,detail=f"No orders with status '{status.value}' updated today ({today})")
+
+#     return {
+#         "date": str(today),
+#         "status": status.value,
+#         "total": len(orders),
+#         "orders": [
+#             {
+#                 "id": o.id,
+#                 "order_number": o.order_number,
+#                 "order_type": o.order_type,
+#                 "status": o.status,
+#                 "payment_method": o.payment_method,
+#                 "cod_amount": float(o.cod_amount) if o.cod_amount else None,
+#                 "order_value": float(o.order_value),
+#                 "total_weight_kg": float(o.total_weight_kg),
+#                 "applicable_weight_kg": float(o.applicable_weight_kg),
+#                 "shipping_charge": float(o.shipping_charge),
+#                 "total_boxes": o.total_boxes,
+#                 "status_updated_at": o.updated_at,  # ← exact time status changed
+#                 "created_at": o.created_at,
+#                 "items": [
+#                     {
+#                         "product_name": item.product_name,
+#                         "sku": item.sku,
+#                         "unit_price": float(item.unit_price),
+#                         "qty": item.qty,
+#                         "total": float(item.total),
+#                     }
+#                     for item in o.items
+#                 ],
+#                 "packages": [
+#                     {
+#                         "count": pkg.count,
+#                         "length_cm": float(pkg.length_cm),
+#                         "breadth_cm": float(pkg.breadth_cm),
+#                         "height_cm": float(pkg.height_cm),
+#                         "physical_weight_kg": float(pkg.physical_weight_kg),
+#                         "vol_weight_kg": float(pkg.vol_weight_kg),
+#                     }
+#                     for pkg in o.packages
+#                 ],
+#                 "pickup_address": {
+#                     "id": o.pickup_address.id,
+#                     "name": o.pickup_address.name,
+#                 } if o.pickup_address else None,
+#                 "consignee": {
+#                     "id": o.consignee.id,
+#                     "name": o.consignee.name,
+#                 } if o.consignee else None,
+#             }
+#             for o in orders
+#         ]
+#     }
+
+
+
+
+
+from datetime import datetime, date
+from sqlalchemy import select, func, or_
+from enum import Enum 
+from app.schemas.order import TodayStatusRequest 
+
+    
+class FilterableStatus(str, Enum):
+    DISPATCHED = "Dispatched"
+    PICKED = "Picked"
+    CANCELLED = "Cancelled"
+    DELIVERED = "Delivered"
+
+       
+@router.get("/orders/today-status")
+async def get_today_status_orders(
+    payload: TodayStatusRequest,
+    status: FilterableStatus = Query(..., description="Dispatched | Picked | Cancelled | Delivered"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),):
+    
+    today = payload.date
+    offset = (page - 1) * limit
+
+    consignee_order_ids = (
+        select(ConsigneeToDelivery.order_id)
+        .where(
+            ConsigneeToDelivery.user_id == current_user.id,
+            func.date(ConsigneeToDelivery.updated_at) == today
+        )
+    )
+    pickup_order_ids = (
+        select(PickupToConsignees.order_id)
+        .where(
+            PickupToConsignees.user_id == current_user.id,
+            func.date(PickupToConsignees.updated_at) == today
+        )
+    )
+    warehouse_order_ids = (
+        select(WarehouseToDelivery.order_id)
+        .where(
+            WarehouseToDelivery.user_id == current_user.id,
+            func.date(WarehouseToDelivery.updated_at) == today
+        )
+    )
+
+    base_filter = [
+        Order.created_by == current_user.id,
+        Order.status == status.value,
+        or_(
+            Order.id.in_(consignee_order_ids),
+            Order.id.in_(pickup_order_ids),
+            Order.id.in_(warehouse_order_ids),
+        )
+    ]
+
+    # Get total count
+    count_stmt = select(func.count()).select_from(Order).where(*base_filter)
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar()
+
+    # Get paginated orders
+    stmt = (
+        select(Order)
+        .where(*base_filter)
+        .order_by(Order.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    result = await db.execute(stmt)
+    orders = result.scalars().all()
+
+    if not orders:
+        raise HTTPException(status_code=404,detail=f"No orders with status '{status.value}' updated today ({today})")
+
+    total_pages = (total + limit - 1) // limit  # ceiling division
+
+    return {
+        "date": str(today),
+        "status": status.value,
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1,
+        },
+        "orders": [
+            {
+                "id": o.id,
+                "order_number": o.order_number,
+                "order_type": o.order_type,
+                "status": o.status,
+                "payment_method": o.payment_method,
+                "cod_amount": float(o.cod_amount) if o.cod_amount else None,
+                "order_value": float(o.order_value),
+                "total_weight_kg": float(o.total_weight_kg),
+                "applicable_weight_kg": float(o.applicable_weight_kg),
+                "shipping_charge": float(o.shipping_charge),
+                "total_boxes": o.total_boxes,
+                "created_at": o.created_at,
+                "updated_at": o.updated_at,
+                "items": [
+                    {
+                        "product_name": item.product_name,
+                        "sku": item.sku,
+                        "unit_price": float(item.unit_price),
+                        "qty": item.qty,
+                        "total": float(item.total),
+                    }
+                    for item in o.items
+                ],
+                "packages": [
+                    {
+                        "count": pkg.count,
+                        "length_cm": float(pkg.length_cm),
+                        "breadth_cm": float(pkg.breadth_cm),
+                        "height_cm": float(pkg.height_cm),
+                        "physical_weight_kg": float(pkg.physical_weight_kg),
+                        "vol_weight_kg": float(pkg.vol_weight_kg),
+                    }
+                    for pkg in o.packages
+                ],
+                "pickup_address": {
+                    "id": o.pickup_address.id,
+                } if o.pickup_address else None,
+                "consignee": {
+                    "id": o.consignee.id,
+                    "name": o.consignee.name,
+                } if o.consignee else None,
+            }
+            for o in orders
+        ]
+    }    
