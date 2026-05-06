@@ -163,8 +163,7 @@ class OrderCreate(BaseModel):
     order_type: OrderType
     pickup_address_id: str
     consignee_id: str
-    warehouse_addresses_id:str
-
+    warehouse_addresses_id:Optional[str] = None
     payment_method: PaymentMethod
     cod_amount: Optional[float] = Field(None, ge=0, description="Required when payment_method is COD")
     to_pay_amount: Optional[float] = Field(None, ge=0, description="Required when payment_method is To Pay")
