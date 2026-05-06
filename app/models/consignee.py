@@ -29,6 +29,8 @@ class Consignee(Base):
     city: Mapped[str] = mapped_column(String(100), nullable=False)
     state: Mapped[str] = mapped_column(String(100), nullable=False)
 
+    status: Mapped[str] = mapped_column(String(10), nullable=False, server_default=text("'active'"))
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

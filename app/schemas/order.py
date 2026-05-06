@@ -89,6 +89,7 @@ class ConsigneeOut(BaseModel):
     pincode: str
     city: str
     state: str
+    status: str = "active"
     created_at: datetime
     updated_at: datetime
 

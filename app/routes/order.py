@@ -55,12 +55,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from PIL import Image
-from pyzbar.pyzbar import decode
+# pyzbar imported lazily � see _lazy_decode()
 import httpx
 from app.models.order import Order, ConsigneeToDelivery, PickupToConsignees,WarehouseToDelivery
 
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
+
+
+def _lazy_decode(image):
+    """Lazy import of pyzbar to avoid crash when DLLs are missing."""
+    from pyzbar.pyzbar import decode as _decode
+    return _decode(image)
 
 
 # ── Pickup Addresses ───────────────────────────────────────────────────────
@@ -174,7 +180,7 @@ import uuid
 from io import BytesIO
 
 from PIL import Image
-from pyzbar.pyzbar import decode
+# pyzbar imported lazily � see _lazy_decode()
 
 import barcode
 from barcode.writer import ImageWriter
@@ -190,7 +196,7 @@ def decode_barcode_from_base64(barcode_base64: str) -> str:
     image_data = base64.b64decode(barcode_base64)
     image = Image.open(BytesIO(image_data))
 
-    decoded_objects = decode(image)
+    decoded_objects = _lazy_decode(image)
     if not decoded_objects:
         raise Exception("Barcode not readable")
 
@@ -304,7 +310,7 @@ async def scan_order(
                 img_data = base64.b64decode(o.barcode)
                 img = Image.open(BytesIO(img_data))
 
-                decoded = decode(img)
+                decoded = _lazy_decode(img)
 
                 for b in decoded:
                     value = b.data.decode("utf-8")
