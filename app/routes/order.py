@@ -544,6 +544,7 @@ async def get_pincode_from_gps(
             status=OrderStatus.PICKED,
             order_id=order.id,
             pickup_addresses_id=pickup.id,
+            user_id=current_user.id  
         )
         db.add(pickup_to_consignee)
         order.status = OrderStatus.PICKED
@@ -554,6 +555,7 @@ async def get_pincode_from_gps(
         return {
             "stage": "Picked",
             "order_id": order.id,
+            "user_id":current_user.id, 
             "order_number": order.order_number,
             "order_status": order.status,
             "record_id": pickup_to_consignee.id,
@@ -580,6 +582,7 @@ async def get_pincode_from_gps(
             status=OrderStatus.DISPATCHED,
             order_id=order.id,
             warehouse_addresses_id=warehouseaddress.id,
+            user_id=current_user.id 
         )
         db.add(pickup_to_consignee)
         order.status = OrderStatus.DISPATCHED
@@ -590,6 +593,7 @@ async def get_pincode_from_gps(
         return {
             "stage": "Dispatched",
             "order_id": order.id,
+            "user_id":current_user.id,
             "order_number": order.order_number,
             "order_status": order.status,
             "record_id": warehouseaddress.id,
@@ -619,6 +623,7 @@ async def get_pincode_from_gps(
             status=OrderStatus.DELIVERED,
             order_id=order.id,
             consignee_id=consignee.id,
+            user_id=current_user.id 
         )
         db.add(consignee_to_delivery)
         order.status = OrderStatus.DELIVERED
@@ -629,6 +634,7 @@ async def get_pincode_from_gps(
         return {
             "stage": "Delivery",
             "order_id": order.id,
+            "user_id":current_user.id ,
             "order_number": order.order_number,
             "order_status": order.status,
             "record_id": consignee_to_delivery.id,
