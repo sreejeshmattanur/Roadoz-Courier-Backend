@@ -24,6 +24,7 @@ from app.schemas.order import (
     ConsigneeCreate,
     ConsigneeOut,
     ConsigneeListResponse,
+    ConsigneeStatusUpdate,
     OrderCreate,
     OrderOut,
     OrderItemOut,
@@ -245,6 +246,26 @@ async def create_consignee(
         state=data.state,
     )
     db.add(consignee)
+    await db.flush()
+    await db.refresh(consignee)
+    return ConsigneeOut.model_validate(consignee)
+
+
+async def update_consignee_status(
+    db: AsyncSession, consignee_id: str, data: ConsigneeStatusUpdate, current_user: User
+) -> ConsigneeOut:
+    result = await db.execute(select(Consignee).where(Consignee.id == consignee_id))
+    consignee = result.scalar_one_or_none()
+    if not consignee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Consignee not found")
+
+    franchise_id = await _resolve_franchise_id(db, current_user)
+    if franchise_id and consignee.franchise_id != franchise_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    elif not franchise_id and consignee.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+    consignee.status = data.status
     await db.flush()
     await db.refresh(consignee)
     return ConsigneeOut.model_validate(consignee)

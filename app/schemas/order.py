@@ -101,6 +101,10 @@ class ConsigneeListResponse(BaseModel):
     total: int
 
 
+class ConsigneeStatusUpdate(BaseModel):
+    status: str = Field(..., pattern="^(active|inactive)$", description="Must be 'active' or 'inactive'")
+
+
 # ── Order Items (Product Details) ──────────────────────────────────────────
 
 

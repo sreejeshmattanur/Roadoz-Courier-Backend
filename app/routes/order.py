@@ -21,6 +21,7 @@ from app.schemas.order import (
     ConsigneeCreate,
     ConsigneeOut,
     ConsigneeListResponse,
+    ConsigneeStatusUpdate,
     OrderCreate,
     OrderOut,
     OrderListResponse,
@@ -35,6 +36,7 @@ from app.services.order_service import (
     create_pickup_address,
     search_consignees,
     create_consignee,
+    update_consignee_status,
     create_order,
     create_bulk_orders,
     list_orders,
@@ -113,6 +115,17 @@ async def create_consignee_endpoint(
     _: User = Depends(require_permission("consignees:create")),
 ):
     return await create_consignee(db, data, current_user)
+
+
+@router.patch('/consignees/{consignee_id}/status', response_model=ConsigneeOut)
+async def update_consignee_status_endpoint(
+    consignee_id: str,
+    data: ConsigneeStatusUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission('consignees:create')),
+):
+    return await update_consignee_status(db, consignee_id, data, current_user)
 
 
 # ── Orders ─────────────────────────────────────────────────────────────────
