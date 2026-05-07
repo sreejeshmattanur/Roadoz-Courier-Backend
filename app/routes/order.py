@@ -558,7 +558,7 @@ async def get_pincode_from_gps(
             "gps_pincode": gps_pincode,
         }
         
-    # elif warehouseaddress.pincode==gps_pincode:
+
     elif warehouseaddress and warehouseaddress.pincode == gps_pincode:
         existing_stmt = select(WarehouseToDelivery).where(WarehouseToDelivery.order_id == order.id)
         existing_result = await db.execute(existing_stmt)

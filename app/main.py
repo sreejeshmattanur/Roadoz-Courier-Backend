@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.security import get_password_hash
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
-from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
+from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
 
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
@@ -268,6 +268,10 @@ app.include_router(remittance.router, prefix=API_PREFIX)
 app.include_router(invoice.router,   prefix=API_PREFIX)
 app.include_router(websocket.router)
 app.include_router(warehouse.router)
+app.include_router(orderreview.router)
+app.include_router(projectreview.router)
+
+
 
 
 @app.get("/", tags=["Health"])
