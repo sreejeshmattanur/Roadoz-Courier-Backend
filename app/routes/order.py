@@ -59,6 +59,13 @@ from pyzbar.pyzbar import decode
 import httpx
 from app.models.order import Order, ConsigneeToDelivery, PickupToConsignees,WarehouseToDelivery
 
+from datetime import datetime, date
+from sqlalchemy import select, func, or_
+from enum import Enum 
+from app.schemas.order import TodayStatusRequest,OrderStatusRequest 
+
+
+
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -506,10 +513,7 @@ async def get_pincode_from_gps(
         raise HTTPException(status_code=404, detail="Pickup address not found")
     if not consignee:
         raise HTTPException(status_code=404, detail="Consignee not found")
-    if not warehouseaddress:
-        raise HTTPException(status_code=404, detail="Warehouseaddress not found")
-    
-    
+
 
     if pickup.pincode == gps_pincode:
 
@@ -649,96 +653,6 @@ class FilterableStatus(str, PyEnum):
 
 
 
-from datetime import datetime, date
-from sqlalchemy import select, func
-
-# @router.get("/orders/today-status")
-# async def get_today_status_orders(
-#     status: FilterableStatus = Query(..., description="Dispatched | Picked | Cancelled | Delivered"),
-#     db: AsyncSession = Depends(get_db),
-#     current_user: User = Depends(get_current_user),
-# ):
-#     today = date.today()  # e.g. 2026-05-06
-
-#     stmt = (
-#         select(Order)
-#         .where(
-#             Order.created_by == current_user.id,
-#             Order.status == status.value,
-#             func.date(Order.updated_at) == today 
-#         )
-#         .order_by(Order.updated_at.desc()))
-
-#     result = await db.execute(stmt)
-#     orders = result.scalars().all()
-#     print("currenct user ",current_user.id)
-#     # print('ordersuser ',orders.created_by)
-#     for o in orders:
-#        print('ordersuser ', o.created_by)
-#     if not orders:
-#         raise HTTPException(status_code=404,detail=f"No orders with status '{status.value}' updated today ({today})")
-
-#     return {
-#         "date": str(today),
-#         "status": status.value,
-#         "total": len(orders),
-#         "orders": [
-#             {
-#                 "id": o.id,
-#                 "order_number": o.order_number,
-#                 "order_type": o.order_type,
-#                 "status": o.status,
-#                 "payment_method": o.payment_method,
-#                 "cod_amount": float(o.cod_amount) if o.cod_amount else None,
-#                 "order_value": float(o.order_value),
-#                 "total_weight_kg": float(o.total_weight_kg),
-#                 "applicable_weight_kg": float(o.applicable_weight_kg),
-#                 "shipping_charge": float(o.shipping_charge),
-#                 "total_boxes": o.total_boxes,
-#                 "status_updated_at": o.updated_at,  # ← exact time status changed
-#                 "created_at": o.created_at,
-#                 "items": [
-#                     {
-#                         "product_name": item.product_name,
-#                         "sku": item.sku,
-#                         "unit_price": float(item.unit_price),
-#                         "qty": item.qty,
-#                         "total": float(item.total),
-#                     }
-#                     for item in o.items
-#                 ],
-#                 "packages": [
-#                     {
-#                         "count": pkg.count,
-#                         "length_cm": float(pkg.length_cm),
-#                         "breadth_cm": float(pkg.breadth_cm),
-#                         "height_cm": float(pkg.height_cm),
-#                         "physical_weight_kg": float(pkg.physical_weight_kg),
-#                         "vol_weight_kg": float(pkg.vol_weight_kg),
-#                     }
-#                     for pkg in o.packages
-#                 ],
-#                 "pickup_address": {
-#                     "id": o.pickup_address.id,
-#                     "name": o.pickup_address.name,
-#                 } if o.pickup_address else None,
-#                 "consignee": {
-#                     "id": o.consignee.id,
-#                     "name": o.consignee.name,
-#                 } if o.consignee else None,
-#             }
-#             for o in orders
-#         ]
-#     }
-
-
-
-
-
-from datetime import datetime, date
-from sqlalchemy import select, func, or_
-from enum import Enum 
-from app.schemas.order import TodayStatusRequest 
 
     
 class FilterableStatus(str, Enum):
@@ -748,7 +662,7 @@ class FilterableStatus(str, Enum):
     DELIVERED = "Delivered"
 
        
-@router.get("/orders/today-status")
+@router.post("/orders/today-status")
 async def get_today_status_orders(
     payload: TodayStatusRequest,
     status: FilterableStatus = Query(..., description="Dispatched | Picked | Cancelled | Delivered"),
@@ -803,17 +717,12 @@ async def get_today_status_orders(
         .where(*base_filter)
         .order_by(Order.created_at.desc())
         .offset(offset)
-        .limit(limit)
-    )
-
+        .limit(limit))
     result = await db.execute(stmt)
     orders = result.scalars().all()
-
     if not orders:
         raise HTTPException(status_code=404,detail=f"No orders with status '{status.value}' updated today ({today})")
-
-    total_pages = (total + limit - 1) // limit  # ceiling division
-
+    total_pages = (total + limit - 1) // limit  
     return {
         "date": str(today),
         "status": status.value,
@@ -830,6 +739,7 @@ async def get_today_status_orders(
                 "id": o.id,
                 "order_number": o.order_number,
                 "order_type": o.order_type,
+                "created_by": o.created_by,
                 "status": o.status,
                 "payment_method": o.payment_method,
                 "cod_amount": float(o.cod_amount) if o.cod_amount else None,
@@ -872,3 +782,100 @@ async def get_today_status_orders(
             for o in orders
         ]
     }    
+    
+    
+   
+
+@router.get("/orders/by-status")
+async def get_all_orders_by_status(
+    payload: OrderStatusRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),):
+    offset = (payload.page - 1) * payload.limit
+    base_filter = [Order.status == payload.status.value]
+    count_stmt = select(func.count()).select_from(Order).where(*base_filter)
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar()
+
+    # Paginated orders
+    stmt = (
+        select(Order)
+        .where(*base_filter)
+        .order_by(Order.created_at.desc())
+        .offset(offset)
+        .limit(payload.limit)
+    )
+
+    result = await db.execute(stmt)
+    orders = result.scalars().all()
+
+    if not orders:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No orders found with status '{payload.status.value}'"
+        )
+
+    total_pages = (total + payload.limit - 1) // payload.limit
+
+    return {
+        "status": payload.status.value,
+        "pagination": {
+            "page": payload.page,
+            "limit": payload.limit,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": payload.page < total_pages,
+            "has_prev": payload.page > 1,
+        },
+        "orders": [
+            {
+                "id": o.id,
+                "order_number": o.order_number,
+                "order_type": o.order_type,
+                "status": o.status,
+                "created_by": o.created_by,
+                "payment_method": o.payment_method,
+                "cod_amount": float(o.cod_amount) if o.cod_amount else None,
+                "order_value": float(o.order_value),
+                "total_weight_kg": float(o.total_weight_kg),
+                "applicable_weight_kg": float(o.applicable_weight_kg),
+                "shipping_charge": float(o.shipping_charge),
+                "total_boxes": o.total_boxes,
+                "created_at": o.created_at,
+                "updated_at": o.updated_at,
+                "items": [
+                    {
+                        "product_name": item.product_name,
+                        "sku": item.sku,
+                        "unit_price": float(item.unit_price),
+                        "qty": item.qty,
+                        "total": float(item.total),
+                    }
+                    for item in o.items
+                ],
+                "packages": [
+                    {
+                        "count": pkg.count,
+                        "length_cm": float(pkg.length_cm),
+                        "breadth_cm": float(pkg.breadth_cm),
+                        "height_cm": float(pkg.height_cm),
+                        "physical_weight_kg": float(pkg.physical_weight_kg),
+                        "vol_weight_kg": float(pkg.vol_weight_kg),
+                    }
+                    for pkg in o.packages
+                ],
+                "pickup_address": {
+                    "id": o.pickup_address.id,
+                } if o.pickup_address else None,
+                "consignee": {
+                    "id": o.consignee.id,
+                    "name": o.consignee.name,
+                } if o.consignee else None,
+            }
+            for o in orders
+        ]
+    }   
+    
+    
+    
+    

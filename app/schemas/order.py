@@ -278,3 +278,15 @@ class BulkOrderResponse(BaseModel):
 
 class TodayStatusRequest(BaseModel):
      date: date                 
+     
+         
+class FilterableStatus(str, Enum):
+    DISPATCHED = "Dispatched"
+    PICKED = "Picked"
+    CANCELLED = "Cancelled"
+    DELIVERED = "Delivered"
+
+class OrderStatusRequest(BaseModel):
+    status: FilterableStatus
+    page: int = 1
+    limit: int = 10
