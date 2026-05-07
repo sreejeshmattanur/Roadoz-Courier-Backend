@@ -640,3 +640,8 @@ async def get_filtered_orders_service(
     orders = result.scalars().all()
 
     return total, orders
+
+
+
+
+
