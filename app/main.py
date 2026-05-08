@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.security import get_password_hash
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
-from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehous
+from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, ActivityLoggingMiddleware
 from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log
 from app.models.activity_log import ActivityLog
