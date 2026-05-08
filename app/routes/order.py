@@ -30,6 +30,8 @@ from app.schemas.order import (
     BulkOrderResponse,
     LocationRequest,
     OrderStatusListResponse,
+    OrderUpdate,
+    
 
 )
 from app.services.order_service import (
@@ -45,7 +47,11 @@ from app.services.order_service import (
     create_bulk_orders,
     list_orders,
     get_order,
-    get_filtered_orders_service
+    get_filtered_orders_service,
+    update_order,
+    delete_order,
+    duplicate_order,
+    get_order_counts,
 )
 
 from sqlalchemy.orm import Session
@@ -197,20 +203,57 @@ async def create_bulk_orders_endpoint(
     return await create_bulk_orders(db, data, current_user)
 
 
-@router.get("", response_model=OrderListResponse)
-async def list_orders_endpoint(
-    page: int = Query(1, ge=1),
-    limit: int = Query(10, ge=1, le=100),
-    search: Optional[str] = Query(None, description="Search by order number"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    order_type: Optional[str] = Query(None, description="Filter by order type (B2C, B2B, International)"),
+# @router.get("", response_model=OrderListResponse)
+# async def list_orders_endpoint(
+#     page: int = Query(1, ge=1),
+#     limit: int = Query(10, ge=1, le=100),
+#     search: Optional[str] = Query(None, description="Search by order number"),
+#     status: Optional[str] = Query(None, description="Filter by status"),
+#     order_type: Optional[str] = Query(None, description="Filter by order type (B2C, B2B, International)"),
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     _: User = Depends(require_permission("orders:view")),
+# ):
+#     return await list_orders(
+#         db, current_user, page=page, limit=limit,
+#         search=search, status_filter=status, order_type=order_type,
+#     )
+
+@router.get("/orders")
+async def get_orders(
+    page: int = Query(1),
+    limit: int = Query(25),
+
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+
+    order_id: str | None = None,
+    awb_no: str | None = None,
+    buyer_name: str | None = None,
+
+    payment_method: str | None = None,
+    status_filter: str | None = None,
+
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("orders:view")),
 ):
+
     return await list_orders(
-        db, current_user, page=page, limit=limit,
-        search=search, status_filter=status, order_type=order_type,
+        db=db,
+        current_user=current_user,
+
+        page=page,
+        limit=limit,
+
+        start_date=start_date,
+        end_date=end_date,
+
+        order_id=order_id,
+        awb_no=awb_no,
+        buyer_name=buyer_name,
+
+        payment_method=payment_method,
+        status_filter=status_filter,
     )
 
 @router.get("/status", response_model=OrderStatusListResponse)
@@ -311,15 +354,63 @@ async def get_order_barcode_endpoint(
 
 
 
+# @router.put("/{order_id}", response_model=OrderOut)
+# async def edit_order(
+#     order_id: str,
+#     data: OrderUpdate,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+# ):
+#     return await update_order(
+#         db=db,
+#         order_id=order_id,
+#         data=data,
+#         current_user=current_user,
+#     )
 
 
+@router.delete("/{order_id}/")
+async def remove_order(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+
+    return await delete_order(
+        db=db,
+        order_id=order_id,
+        current_user=current_user,
+    )
 
 
+@router.patch("/{order_id}/", response_model=OrderOut)
+async def edit_order(
+    order_id: str,
+    data: OrderUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+
+    return await update_order(
+        db=db,
+        order_id=order_id,
+        data=data,
+        current_user=current_user,
+    )
 
 
+@router.post("/{order_id}/duplicate", response_model=OrderOut)
+async def duplicate_existing_order(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    order = await duplicate_order(db, order_id, current_user)
+    await db.commit()
+    return order
 
 
-@router.get("/{order_id}", response_model=OrderOut)
+@router.get("/{order_id}/", response_model=OrderOut)
 async def get_order_endpoint(
     order_id: str,
     db: AsyncSession = Depends(get_db),
@@ -327,6 +418,7 @@ async def get_order_endpoint(
     _: User = Depends(require_permission("orders:view")),
 ):
     return await get_order(db, order_id, current_user)
+
 
 
 
@@ -844,6 +936,15 @@ async def get_today_status_orders(
             for o in orders
         ]
     }    
+
+
+
+@router.get("/counts")
+async def get_all_order_counts(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await get_order_counts(db, current_user)
     
     
    

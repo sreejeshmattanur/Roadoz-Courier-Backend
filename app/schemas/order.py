@@ -318,6 +318,33 @@ class BulkOrderResponse(BaseModel):
 
 class TodayStatusRequest(BaseModel):
      date: date                 
+
+
+
+class OrderUpdate(BaseModel):
+    order_type: Optional[OrderType] = None
+
+    pickup_address_id: Optional[str] = None
+    consignee_id: Optional[str] = None
+    warehouse_addresses_id: Optional[str] = None
+
+    payment_method: Optional[PaymentMethod] = None
+
+    cod_amount: Optional[float] = None
+    to_pay_amount: Optional[float] = None
+
+    rov: Optional[ROV] = None
+
+    order_value: Optional[float] = None
+
+    gst_number: Optional[str] = None
+    eway_bill_number: Optional[str] = None
+
+    shipping_charge: Optional[float] = None
+
+    items: Optional[List[OrderItemCreate]] = None
+    packages: Optional[List[OrderPackageCreate]] = None
+
      
          
 class FilterableStatus(str, Enum):

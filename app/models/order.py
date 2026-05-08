@@ -23,7 +23,7 @@ class OrderStatus(str, Enum):
     RETURNED = "Returned"
     CANCELLED = "Cancelled"
     LOST = "Lost"
-    PICKED = "Picked"           # ← add this
+    PICKED = "Picked"           
     DISPATCHED = "Dispatched" 
 
 class Order(Base):
