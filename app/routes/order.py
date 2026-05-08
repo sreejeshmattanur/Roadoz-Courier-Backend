@@ -219,7 +219,7 @@ async def create_bulk_orders_endpoint(
 #         search=search, status_filter=status, order_type=order_type,
 #     )
 
-@router.get("/")
+@router.get("")
 async def get_orders(
     page: int = Query(1),
     limit: int = Query(25),
