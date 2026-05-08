@@ -26,10 +26,43 @@ class OrderStatus(str, Enum):
     PICKED = "Picked"           
     DISPATCHED = "Dispatched" 
 
+class BulkOrder(Base):
+    __tablename__ = "bulk_orders"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    order_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    pickup_address_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("pickup_addresses.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Processing")
+    total_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    successful_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    created_by: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    franchise_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("franchises.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP"), onupdate=datetime.utcnow
+    )
+
+    orders = relationship("Order", back_populates="bulk_order", lazy="selectin")
+
 class Order(Base):
     __tablename__ = "orders"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    bulk_order_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("bulk_orders.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     order_number: Mapped[str] = mapped_column(String(50), unique=True, nullable=False, index=True)
 
     # B2C | B2B | International
@@ -94,6 +127,7 @@ class Order(Base):
     )
 
     # Relationships
+    bulk_order = relationship("BulkOrder", back_populates="orders")
     items = relationship("OrderItem", back_populates="order", cascade="all, delete-orphan", lazy="selectin")
     packages = relationship("OrderPackage", back_populates="order", cascade="all, delete-orphan", lazy="selectin")
     pickup_address = relationship("PickupAddress", lazy="selectin")

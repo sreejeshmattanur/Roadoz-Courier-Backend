@@ -14,6 +14,15 @@ from app.models.role import Role  # noqa: F401
 from app.models.permission import Permission  # noqa: F401
 from app.models.role_permission import RolePermission  # noqa: F401
 from app.models.user_role import UserRole  # noqa: F401
+from app.models.order import Order, BulkOrder, OrderItem, OrderPackage, ConsigneeToDelivery, PickupToConsignees, WarehouseToDelivery
+from app.models.pickup_address import PickupAddress
+from app.models.consignee import Consignee
+from app.models.warehouse import WareHouseAddress
+from app.models.wallet import Wallet, WalletTransaction
+from app.models.activity_log import ActivityLog
+from app.models.remittance import Remittance, RemittanceOrder
+from app.models.invoice import Invoice, InvoiceOrder
+from app.models.orderreview import OrderReview
 from app.core.config import settings
 
 config = context.config

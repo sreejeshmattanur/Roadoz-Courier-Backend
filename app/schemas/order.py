@@ -299,20 +299,35 @@ class OrderStatusListResponse(BaseModel):
 # ── Bulk Order Create ─────────────────────────────────────────────────────
 
 
-class BulkOrderCreate(BaseModel):
-    orders: List[OrderCreate] = Field(..., min_length=1, max_length=50, description="List of orders to create (max 50)")
+class BulkOrderOut(BaseModel):
+    id: str
+    file_name: str
+    order_type: str
+    pickup_address_id: str
+    status: str
+    total_orders: int
+    successful_orders: int
+    failed_orders: int
+    created_by: str
+    franchise_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
 
+    model_config = {"from_attributes": True}
+
+class BulkOrderListResponse(BaseModel):
+    items: List[BulkOrderOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
 
 class BulkOrderError(BaseModel):
     index: int
     error: str
 
-
 class BulkOrderResponse(BaseModel):
-    total_submitted: int
-    successful: int
-    failed: int
-    orders: List[OrderOut]
+    bulk_order: BulkOrderOut
     errors: List[BulkOrderError]
 
 

@@ -16,6 +16,7 @@ greenlet==3.0.3
 websockets==12.0
 python-barcode==0.16.0
 Pillow==10.3.0
+openpyxl==3.1.2
 # Optional — uncomment for Twilio SMS OTP
 # twilio==9.1.0
 # Optional — swap to these for PostgreSQL in production

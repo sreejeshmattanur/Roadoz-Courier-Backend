@@ -12,7 +12,7 @@ from app.models.franchise import Franchise
 from app.models.pickup_address import PickupAddress
 from app.models.consignee import Consignee
 from app.models.warehouse import WareHouseAddress
-from app.models.order import Order, OrderItem, OrderPackage, OrderStatus
+from app.models.order import Order, OrderItem, OrderPackage, OrderStatus, BulkOrder
 from app.models.role import Role
 from app.models.user_role import UserRole
 from app.services.wallet_service import debit_for_order
@@ -33,7 +33,8 @@ from app.schemas.order import (
     OrderPackageOut,
     OrderListResponse,
     WeightSummary,
-    BulkOrderCreate,
+    BulkOrderOut,
+    BulkOrderListResponse,
     BulkOrderError,
     BulkOrderResponse,
     OrderUpdate,
@@ -41,7 +42,8 @@ from app.schemas.order import (
 from typing import List, Optional,Tuple
 from sqlalchemy.orm import Session
 
-
+import openpyxl
+from io import BytesIO
 logger = logging.getLogger(__name__)
 
 VOL_DIVIDEND_B2C = 5000
@@ -509,34 +511,174 @@ async def create_order(
     return _build_order_out(order)
 
 
-async def create_bulk_orders(
-    db: AsyncSession, data: BulkOrderCreate, current_user: User
+async def process_bulk_excel_upload(
+    db: AsyncSession, 
+    file_content: bytes, 
+    file_name: str,
+    order_type: str, 
+    pickup_address_id: str, 
+    current_user: User
 ) -> BulkOrderResponse:
-    """Create multiple orders in one request. Each order is processed in its own
-    savepoint so a single failure does not roll back the entire batch."""
-    created_orders: list[OrderOut] = []
-    errors: list[BulkOrderError] = []
+    franchise_id = await _resolve_franchise_id(db, current_user)
+    
+    bulk_order = BulkOrder(
+        id=str(uuid.uuid4()),
+        file_name=file_name,
+        order_type=order_type,
+        pickup_address_id=pickup_address_id,
+        created_by=current_user.id,
+        franchise_id=franchise_id,
+        status="Processing"
+    )
+    db.add(bulk_order)
+    await db.flush()
 
-    for idx, order_data in enumerate(data.orders):
+    wb = openpyxl.load_workbook(filename=BytesIO(file_content), data_only=True)
+    sheet = wb.active
+
+    headers = [str(cell.value).strip().lower() if cell.value else "" for cell in sheet[1]]
+    
+    col_map = {
+        "consignee_name": headers.index("consignee_name") if "consignee_name" in headers else -1,
+        "mobile": headers.index("mobile") if "mobile" in headers else -1,
+        "email": headers.index("email") if "email" in headers else -1,
+        "address_line_1": headers.index("address_line_1") if "address_line_1" in headers else -1,
+        "pincode": headers.index("pincode") if "pincode" in headers else -1,
+        "city": headers.index("city") if "city" in headers else -1,
+        "state": headers.index("state") if "state" in headers else -1,
+        "payment_method": headers.index("payment_method") if "payment_method" in headers else -1,
+        "cod_amount": headers.index("cod_amount") if "cod_amount" in headers else -1,
+        "to_pay_amount": headers.index("to_pay_amount") if "to_pay_amount" in headers else -1,
+        "rov": headers.index("rov") if "rov" in headers else -1,
+        "order_value": headers.index("order_value") if "order_value" in headers else -1,
+        "product_name": headers.index("product_name") if "product_name" in headers else -1,
+        "sku": headers.index("sku") if "sku" in headers else -1,
+        "unit_price": headers.index("unit_price") if "unit_price" in headers else -1,
+        "qty": headers.index("qty") if "qty" in headers else -1,
+        "length_cm": headers.index("length_cm") if "length_cm" in headers else -1,
+        "breadth_cm": headers.index("breadth_cm") if "breadth_cm" in headers else -1,
+        "height_cm": headers.index("height_cm") if "height_cm" in headers else -1,
+        "physical_weight_kg": headers.index("physical_weight_kg") if "physical_weight_kg" in headers else -1,
+    }
+
+    errors = []
+    success_count = 0
+
+    for idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
         try:
+            if not any(row):
+                continue
+            
+            def get_val(key, default=None):
+                if col_map[key] != -1 and col_map[key] < len(row) and row[col_map[key]] is not None:
+                    return row[col_map[key]]
+                return default
+
+            consignee_data = ConsigneeCreate(
+                name=str(get_val("consignee_name", "")),
+                mobile=str(get_val("mobile", "")),
+                email=get_val("email"),
+                address_line_1=str(get_val("address_line_1", "")),
+                pincode=str(get_val("pincode", "")),
+                city=str(get_val("city", "")),
+                state=str(get_val("state", ""))
+            )
+            
             async with db.begin_nested():
+                consignee_out = await create_consignee(db, consignee_data, current_user)
+                
+                payment_method = str(get_val("payment_method", "Prepaid"))
+                order_data = OrderCreate(
+                    order_type=order_type,
+                    pickup_address_id=pickup_address_id,
+                    consignee_id=consignee_out.id,
+                    payment_method=payment_method,
+                    cod_amount=float(get_val("cod_amount") or 0) if payment_method == "COD" else None,
+                    to_pay_amount=float(get_val("to_pay_amount") or 0) if payment_method == "To Pay" else None,
+                    rov=str(get_val("rov", "owner_risk")),
+                    order_value=float(get_val("order_value") or 0),
+                    items=[
+                        {
+                            "product_name": str(get_val("product_name", "Product")),
+                            "sku": get_val("sku"),
+                            "unit_price": float(get_val("unit_price") or 0),
+                            "qty": int(get_val("qty") or 1),
+                            "total": float(get_val("unit_price") or 0) * int(get_val("qty") or 1)
+                        }
+                    ],
+                    packages=[
+                        {
+                            "count": 1,
+                            "length_cm": float(get_val("length_cm") or 1),
+                            "breadth_cm": float(get_val("breadth_cm") or 1),
+                            "height_cm": float(get_val("height_cm") or 1),
+                            "vol_weight_kg": (float(get_val("length_cm") or 1) * float(get_val("breadth_cm") or 1) * float(get_val("height_cm") or 1)) / 5000,
+                            "physical_weight_kg": float(get_val("physical_weight_kg") or 1)
+                        }
+                    ],
+                    shipping_charge=0 
+                )
+                
                 order_out = await create_order(db, order_data, current_user)
-                created_orders.append(order_out)
-        except HTTPException as exc:
-            errors.append(BulkOrderError(index=idx, error=exc.detail))
+                
+                # Update bulk_order_id directly
+                order = await db.get(Order, order_out.id)
+                order.bulk_order_id = bulk_order.id
+                
+                success_count += 1
+                
         except Exception as exc:
-            logger.error(f"Bulk order index {idx} failed: {exc}")
+            logger.error(f"Row {idx} failed: {str(exc)}")
             errors.append(BulkOrderError(index=idx, error=str(exc)))
 
+    bulk_order.total_orders = success_count + len(errors)
+    bulk_order.successful_orders = success_count
+    bulk_order.failed_orders = len(errors)
+    bulk_order.status = "Completed" if len(errors) == 0 else "Completed With Errors"
+    
     await db.commit()
-
+    await db.refresh(bulk_order)
+    
     return BulkOrderResponse(
-        total_submitted=len(data.orders),
-        successful=len(created_orders),
-        failed=len(errors),
-        orders=created_orders,
-        errors=errors,
+        bulk_order=BulkOrderOut.model_validate(bulk_order),
+        errors=errors
     )
+
+
+async def list_bulk_orders(
+    db: AsyncSession,
+    current_user: User,
+    page: int = 1,
+    limit: int = 10,
+) -> BulkOrderListResponse:
+    franchise_id = await _resolve_franchise_id(db, current_user)
+    
+    query = select(BulkOrder)
+    count_query = select(func.count()).select_from(BulkOrder)
+    
+    if franchise_id:
+        query = query.where(BulkOrder.franchise_id == franchise_id)
+        count_query = count_query.where(BulkOrder.franchise_id == franchise_id)
+    else:
+        caller_role = await _get_caller_role_name(db, current_user.id)
+        if caller_role != "super_admin":
+            query = query.where(BulkOrder.created_by == current_user.id)
+            count_query = count_query.where(BulkOrder.created_by == current_user.id)
+            
+    total = (await db.execute(count_query)).scalar_one()
+    offset = (page - 1) * limit
+    result = await db.execute(query.order_by(BulkOrder.created_at.desc()).offset(offset).limit(limit))
+    bulk_orders = result.scalars().all()
+    
+    return BulkOrderListResponse(
+        items=[BulkOrderOut.model_validate(b) for b in bulk_orders],
+        total=total,
+        page=page,
+        limit=limit,
+        pages=math.ceil(total / limit) if total > 0 else 0,
+    )
+
+
 
 
 
@@ -730,11 +872,13 @@ async def list_orders(
 
     payment_method: str | None = None,
     status_filter: str | None = None,
+    bulk_order_id: str | None = None,
 ) -> dict:
 
     filters = []
 
-    
+    if bulk_order_id:
+        filters.append(Order.bulk_order_id == bulk_order_id)
 
     caller_role = await _get_caller_role_name(
         db,
