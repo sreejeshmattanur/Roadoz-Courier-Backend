@@ -935,7 +935,7 @@ async def list_orders(
 
     if buyer_name:
         filters.append(
-            Order.customer_name.ilike(
+            PickupAddress.contact_name.ilike(
                 f"%{buyer_name}%"
             )
         )
