@@ -8,6 +8,11 @@ from app.core.database import Base
 from enum import Enum
 from sqlalchemy import Enum as SqlEnum
 
+import pytz
+IST = pytz.timezone("Asia/Kolkata")
+
+def indian_time():
+    return datetime.now(IST)
 
 
 
@@ -120,10 +125,10 @@ class Order(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        DateTime,default=indian_time, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        DateTime, nullable=False, default=indian_time
     )
 
     # Relationships
@@ -151,7 +156,7 @@ class OrderItem(Base):
     total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        DateTime, nullable=False,default=indian_time,
     )
 
     order = relationship("Order", back_populates="items")
@@ -174,7 +179,7 @@ class OrderPackage(Base):
     physical_weight_kg: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        DateTime, nullable=False, default=indian_time,
     )
 
     order = relationship("Order", back_populates="packages")
@@ -198,8 +203,8 @@ class ConsigneeToDelivery(Base):
     
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True) 
     
-    created_at: Mapped[datetime] = mapped_column(DateTime,default=datetime.utcnow,nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime,default=datetime.utcnow,onupdate=datetime.utcnow,nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime,default=indian_time,nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime,default=indian_time,onupdate=datetime.utcnow,nullable=False)
 
     
 class PickupToConsignees(Base):
@@ -215,8 +220,8 @@ class PickupToConsignees(Base):
     order = relationship("Order", backref="pickup_to_consignees")
     pickup_address = relationship("PickupAddress", backref="pickup_to_consignees") 
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True) 
-    created_at: Mapped[datetime] = mapped_column(DateTime,default=datetime.utcnow,nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime,default=datetime.utcnow,onupdate=datetime.utcnow,nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime,default=indian_time,nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime,default=indian_time,onupdate=datetime.utcnow,nullable=False)
  
     
     
@@ -233,6 +238,6 @@ class WarehouseToDelivery(Base):
     order = relationship("Order", backref="warehouse_to_delivery")
     warehouse_address = relationship("WareHouseAddress", backref="warehouse_to_delivery") 
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True) 
-    created_at: Mapped[datetime] = mapped_column(DateTime,default=datetime.utcnow,nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime,default=datetime.utcnow,onupdate=datetime.utcnow,nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime,default=indian_time,nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime,default=indian_time,onupdate=datetime.utcnow,nullable=False)
     
