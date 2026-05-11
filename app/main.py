@@ -13,7 +13,7 @@ from app.core.security import get_password_hash
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, ActivityLoggingMiddleware
-from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview
+from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview, analytics
 from app.models.activity_log import ActivityLog
 
 logging.basicConfig(
@@ -181,6 +181,25 @@ async def _seed_default_role_permissions():
         logger.info("Default role permissions seeded")
 
 
+import asyncio
+from datetime import datetime, timedelta
+from app.core.database import AsyncSessionLocal
+from sqlalchemy import delete
+from app.models.activity_log import ActivityLog
+
+async def _cleanup_activity_logs():
+    """Background task to delete activity logs older than 3 days."""
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                three_days_ago = datetime.utcnow() - timedelta(days=3)
+                await db.execute(delete(ActivityLog).where(ActivityLog.created_at < three_days_ago))
+                await db.commit()
+        except Exception as e:
+            logger.error(f"Error cleaning up activity logs: {e}")
+        # Run cleanup every 24 hours
+        await asyncio.sleep(86400)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
@@ -189,8 +208,13 @@ async def lifespan(app: FastAPI):
     await _seed_permissions()
     await _seed_super_admin()
     await _seed_default_role_permissions()
+    
+    # Start background tasks
+    cleanup_task = asyncio.create_task(_cleanup_activity_logs())
+    
     yield
     logger.info("Shutting down")
+    cleanup_task.cancel()
 
 
 app = FastAPI(
@@ -279,6 +303,7 @@ app.include_router(orderreview.router)
 app.include_router(projectreview.router)
 app.include_router(consigeeauth.router)
 app.include_router(coningeereview.router)
+app.include_router(analytics.router, prefix=API_PREFIX)
 
 
 
