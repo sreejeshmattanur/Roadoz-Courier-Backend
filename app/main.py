@@ -20,7 +20,7 @@ from app.middleware.maintenance_middleware import MaintenanceMiddleware
 
 
 
-from app.websocket import notification_socket
+from app.websocket.notification_socket import router as ws_router
 
 
 logging.basicConfig(
@@ -305,19 +305,14 @@ app.include_router(wallet.router,   prefix=API_PREFIX)
 app.include_router(remittance.router, prefix=API_PREFIX)
 app.include_router(invoice.router,   prefix=API_PREFIX)
 app.include_router(activity_log.router, prefix=API_PREFIX)
-app.include_router(websocket.router)
 app.include_router(warehouse.router)
-app.include_router(orderreview.router)
 app.include_router(projectreview.router)
 app.include_router(consigeeauth.router)
 app.include_router(coningeereview.router)
 app.include_router(webconfiguration.router)
 app.include_router(analytics.router, prefix=API_PREFIX)
-
+app.include_router(ws_router)
 app.include_router(notification.router)
-
-app.include_router(notification_socket.router)
-
 
 @app.get("/", tags=["Health"])
 async def root():

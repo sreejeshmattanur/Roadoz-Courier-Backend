@@ -646,7 +646,7 @@ async def get_full_order(
 
 
 
-
+from app.services.notification_service import create_notification
 
 async def get_pincode_from_lat_lng(lat: float, lng: float):
     try:
@@ -728,7 +728,11 @@ async def get_pincode_from_gps(
         db.add(pickup_to_consignee)
         order.status = OrderStatus.PICKED
         order.updated_at = datetime.now(IST)
-
+        
+        await create_notification(
+        db=db,
+        title="Order Picked",
+        message=(f"Order {order.order_number} "f"Picked successfully"),type="order",order_id=order.id,)
         await db.commit()
         await db.refresh(pickup_to_consignee)
 
@@ -768,7 +772,12 @@ async def get_pincode_from_gps(
         db.add(pickup_to_consignee)
         order.status = OrderStatus.DISPATCHED
         order.updated_at = datetime.now(IST)
-
+        
+        
+        await create_notification(
+        db=db,
+        title="Order Dispatched",
+        message=(f"Order {order.order_number} "f"Dispatched successfully"),type="order",order_id=order.id,)
         await db.commit()
         await db.refresh(pickup_to_consignee)
 
@@ -810,7 +819,10 @@ async def get_pincode_from_gps(
         db.add(consignee_to_delivery)
         order.status = OrderStatus.DELIVERED
         order.updated_at = datetime.now(IST)
-
+        await create_notification(
+        db=db,
+        title="Order Delivery",
+        message=(f"Order {order.order_number} "f"Delivery successfully"),type="order",order_id=order.id,)
         await db.commit()
         await db.refresh(consignee_to_delivery)
 
