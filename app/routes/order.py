@@ -13,7 +13,8 @@ from app.models.order import Order,OrderItem,OrderPackage
 from app.models.warehouse import WareHouseAddress
 
 from app.models.order import OrderStatus
-
+import pytz
+IST = pytz.timezone("Asia/Kolkata")
 from app.schemas.order import (
     PickupAddressCreate,
     PickupAddressUpdate,
@@ -76,7 +77,7 @@ from datetime import datetime, date
 from sqlalchemy import select, func, or_
 from enum import Enum 
 from app.schemas.order import TodayStatusRequest,OrderStatusRequest 
-
+from app.models.webconfiguration import WebConfiguration
 
 
 
@@ -262,6 +263,11 @@ async def get_orders(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    result = await db.execute(select(WebConfiguration))
+    config = result.scalars().first()
+    if config:
+        if config.maintenance_mode:
+            raise HTTPException(status_code=503,detail="System under maintenance")
 
     return await list_orders(
         db=db,
@@ -712,7 +718,7 @@ async def get_pincode_from_gps(
         )
         db.add(pickup_to_consignee)
         order.status = OrderStatus.PICKED
-        order.updated_at = datetime.utcnow()
+        order.updated_at = datetime.now(IST)
 
         await db.commit()
         await db.refresh(pickup_to_consignee)
@@ -752,7 +758,7 @@ async def get_pincode_from_gps(
         )
         db.add(pickup_to_consignee)
         order.status = OrderStatus.DISPATCHED
-        order.updated_at = datetime.utcnow()
+        order.updated_at = datetime.now(IST)
 
         await db.commit()
         await db.refresh(pickup_to_consignee)
@@ -794,7 +800,7 @@ async def get_pincode_from_gps(
         )
         db.add(consignee_to_delivery)
         order.status = OrderStatus.DELIVERED
-        order.updated_at = datetime.utcnow()
+        order.updated_at = datetime.now(IST)
 
         await db.commit()
         await db.refresh(consignee_to_delivery)

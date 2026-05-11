@@ -13,7 +13,7 @@ from app.core.security import get_password_hash
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, ActivityLoggingMiddleware
-from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview
+from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration
 from app.models.activity_log import ActivityLog
 
 logging.basicConfig(
@@ -279,6 +279,7 @@ app.include_router(orderreview.router)
 app.include_router(projectreview.router)
 app.include_router(consigeeauth.router)
 app.include_router(coningeereview.router)
+app.include_router(webconfiguration.router)
 
 
 
