@@ -15,3 +15,19 @@ class SendOTPRequest(BaseModel):
 class VerifyOTPRequest(BaseModel):
     email: EmailStr
     otp: str
+    
+    
+
+class PhoneRegisterRequest(BaseModel):
+    name:str | None = None
+    phone: str
+    email: str | None = None
+
+class SendOTPRequestByphone(BaseModel):
+    phone: str
+
+
+class VerifyOTPRequestByphone(BaseModel):
+
+    phone: str
+    otp: str    

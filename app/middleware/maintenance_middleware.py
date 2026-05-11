@@ -8,6 +8,8 @@ from app.models.webconfiguration import WebConfiguration
 
 class MaintenanceMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        if request.headers.get("upgrade", "").lower() == "websocket":
+            return await call_next(request)
         async with AsyncSessionLocal() as db:
             result = await db.execute(select(WebConfiguration))
             config = result.scalars().first()

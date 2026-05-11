@@ -21,13 +21,20 @@ PUBLIC_ROUTES = {
     "/redoc",
     "/",
     "/ws/notifications",
+    "/websocket/ws/notifications", 
 }
+
+
+def _is_websocket(request: Request) -> bool:
+    return request.headers.get("upgrade", "").lower() == "websocket"
 
 
 class RequestLoggingMiddleware(BaseHTTPMiddleware):
     """Log each request with timing information."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        if _is_websocket(request):                      # ← ADD THIS
+            return await call_next(request)
         start = time.perf_counter()
         response = await call_next(request)
         duration = (time.perf_counter() - start) * 1000
@@ -115,6 +122,8 @@ class ActivityLoggingMiddleware(BaseHTTPMiddleware):
     """Log write operations to the database."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        if _is_websocket(request):                      # ← ADD THIS
+            return await call_next(request)
         response = await call_next(request)
         
         # Only log successful write operations
