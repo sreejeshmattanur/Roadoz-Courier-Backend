@@ -35,6 +35,7 @@ from app.schemas.order import (
     
 
 )
+from app.models.consigeeauth import AuthUser
 from app.utils.webconfig import check_maintenance_mode
 from app.services.order_service import (
     search_pickup_addresses,
@@ -455,12 +456,14 @@ async def get_order_endpoint(
     return await get_order(db, order_id, current_user)
 
 
+from app.dependencies.consigeeuser import get_current_user as get_current_consigee
+
+
 @router.get("/getsinglorderbybarcode/{barcode}/",response_model=OrderOut)
 async def get_order_endpoint(
     barcode: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("orders:view")),):
+    current_user: AuthUser = Depends(get_current_consigee)):
     return await get_order_bybarcode(db,barcode,current_user)
 
 

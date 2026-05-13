@@ -19,7 +19,7 @@ from app.models.activity_log import ActivityLog
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 
 
-
+from app.websocket.user_admin_chat import router as websocket_router
 from app.websocket.notification_socket import router as ws_router
 
 
@@ -315,6 +315,8 @@ app.include_router(webconfiguration.router)
 app.include_router(analytics.router, prefix=API_PREFIX)
 app.include_router(ws_router)
 app.include_router(notification.router)
+app.include_router(websocket_router)
+
 
 @app.get("/", tags=["Health"])
 async def root():

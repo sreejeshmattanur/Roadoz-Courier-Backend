@@ -1146,7 +1146,7 @@ async def get_order_bybarcode(db: AsyncSession,barcode: str,current_user: User,)
         decoded_input = base64.b64decode(decoded_input).decode("utf-8")
     except Exception:
         pass
-    stmt = select(Order).where(((Order.barcode == decoded_input)|(Order.order_number == decoded_input))&(Order.created_by == current_user.id))
+    stmt = select(Order).where(((Order.barcode == decoded_input)|(Order.order_number == decoded_input)))
     result = await db.execute(stmt)
     order = result.scalar_one_or_none()
     if not order:
