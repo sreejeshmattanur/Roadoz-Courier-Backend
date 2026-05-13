@@ -14,7 +14,7 @@ from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHea
 from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, ActivityLoggingMiddleware
 from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration,notification
-from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration, analytics
+from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration, analytics,user_admincommunication
 from app.models.activity_log import ActivityLog
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 
@@ -297,6 +297,7 @@ app.add_middleware(MaintenanceMiddleware)
 
 
 # ── Routers ──────────────────────────────────────────────────────────────────
+
 API_PREFIX = "/api/v1"
 app.include_router(auth.router,      prefix=API_PREFIX)
 app.include_router(franchise.router, prefix=API_PREFIX)
@@ -307,15 +308,16 @@ app.include_router(wallet.router,   prefix=API_PREFIX)
 app.include_router(remittance.router, prefix=API_PREFIX)
 app.include_router(invoice.router,   prefix=API_PREFIX)
 app.include_router(activity_log.router, prefix=API_PREFIX)
-app.include_router(warehouse.router)
-app.include_router(projectreview.router)
-app.include_router(consigeeauth.router)
-app.include_router(coningeereview.router)
-app.include_router(webconfiguration.router)
+app.include_router(warehouse.router,prefix=API_PREFIX)
+app.include_router(projectreview.router,prefix=API_PREFIX)
+app.include_router(consigeeauth.router,prefix=API_PREFIX)
+app.include_router(coningeereview.router,prefix=API_PREFIX)
+app.include_router(webconfiguration.router,prefix=API_PREFIX)
 app.include_router(analytics.router, prefix=API_PREFIX)
-app.include_router(ws_router)
-app.include_router(notification.router)
-app.include_router(websocket_router)
+app.include_router(ws_router,prefix=API_PREFIX)
+app.include_router(notification.router,prefix=API_PREFIX)
+app.include_router(websocket_router,prefix=API_PREFIX)
+app.include_router(user_admincommunication.router,prefix=API_PREFIX)
 
 
 @app.get("/", tags=["Health"])
@@ -326,7 +328,7 @@ async def root():
         "status": "running",
         "docs": "/docs",
         "database": "SQLite (franchise.db)" if settings.DATABASE_URL.startswith("sqlite") else "PostgreSQL",
-    }
+    }    
 
 
 @app.get("/health", tags=["Health"])

@@ -17,7 +17,7 @@ from math import ceil
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
 
-router = APIRouter(prefix="/product-reviews",tags=["Product Reviews"])
+router = APIRouter(prefix="/product-reviews",tags=["Order Reviews"])
 
 @router.post("/create/", response_model=ProductReviewResponse)
 async def create_product_review(

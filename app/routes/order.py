@@ -82,6 +82,9 @@ from enum import Enum
 from app.schemas.order import TodayStatusRequest,OrderStatusRequest 
 from app.models.webconfiguration import WebConfiguration
 
+from app.dependencies.consigeeuser import get_current_user as get_current_consigee
+
+
 
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
@@ -455,8 +458,6 @@ async def get_order_endpoint(
 ):
     return await get_order(db, order_id, current_user)
 
-
-from app.dependencies.consigeeuser import get_current_user as get_current_consigee
 
 
 @router.get("/getsinglorderbybarcode/{barcode}/",response_model=OrderOut)

@@ -14,7 +14,7 @@ from app.schemas.projectreview import (
 from app.dependencies.role_checker import get_current_user
 
 
-router = APIRouter(prefix="/project/reviews", tags=["Project Reviews"])
+router = APIRouter(prefix="/project/reviews", tags=["Service Reviews"])
 
 
 # =====================================================

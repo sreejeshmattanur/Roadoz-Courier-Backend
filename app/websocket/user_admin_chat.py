@@ -8,8 +8,12 @@ from app.websocket.user_admin_manager import manager
 from app.utils.websocket_auth import verify_websocket_token
 
 router = APIRouter(prefix="/ws/admin",tags=["WebSocket"])
+
+
+
 @router.websocket("/chat")
 async def websocket_chat(websocket: WebSocket):
+    
     token = websocket.query_params.get("token")
     if not token:
         await websocket.close(code=1008)

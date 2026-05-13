@@ -33,14 +33,29 @@ async def list_warehouses(
 
 
 
-
-@router.get("/getonebyone/{address_id}", response_model=WarehouseAddressResponse)
+@router.get("/getonebyonewithid/{address_id}", response_model=WarehouseAddressResponse)
 async def get_address_by_id(address_id: str,db: AsyncSession = Depends(get_db),current_user: User = Depends(get_current_user)):
     result = await db.execute(select(WareHouseAddress).where(WareHouseAddress.id == address_id))
     address = result.scalar_one_or_none()
     if not address:
         raise HTTPException(status_code=404, detail="Address not found")
     return address
+
+
+
+
+@router.get("/getonebyonewithpincode/{pincode}",response_model=list[WarehouseAddressResponse])
+async def get_address_by_id(
+    pincode: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(WareHouseAddress).where(WareHouseAddress.pincode == pincode))
+    addresses = result.scalars().all()
+    if not addresses:
+        raise HTTPException(status_code=404,detail="Address not found")
+    return addresses
+
+
 
 
 
