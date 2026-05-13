@@ -279,7 +279,7 @@ origins = [
     "http://localhost:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3000",
-    "https://www.roadozcourier.com"
+    "https://www.roadozcourier.com",
     "https://admin.roadozcourier.com"
 ]
 

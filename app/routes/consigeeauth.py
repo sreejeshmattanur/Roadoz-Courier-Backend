@@ -167,4 +167,4 @@ async def verify_otp(payload: VerifyOTPRequestByphone,db: AsyncSession = Depends
             "id": user.id,
             "phone": user.phone
         }
-    }
+    }    

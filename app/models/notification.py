@@ -22,3 +22,7 @@ class Notification(Base):
     order_id = Column(String(36),ForeignKey("orders.id"),nullable=False)
     created_at = Column(DateTime(timezone=True),default=lambda: datetime.now(IST))
     expires_at = Column(DateTime(timezone=True),default=lambda: datetime.now(IST) + timedelta(hours=5))
+    
+    
+    
+    
