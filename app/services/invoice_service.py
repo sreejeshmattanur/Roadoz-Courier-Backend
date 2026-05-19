@@ -18,6 +18,8 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     InvoiceGenerateRequest,
 )
+from app.schemas.rate_calculator import RateCalculationRequest, BoxInput
+from app.services.rate_calculator.rate_calculator_service import calculate_rate
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +134,94 @@ async def generate_invoice(
         f"Invoice generated: #{invoice_number}, franchise={data.franchise_id}, "
         f"subtotal={subtotal}, tax={tax_amount}, total={total_amount}, orders={len(orders)}"
     )
+    return InvoiceOut.model_validate(invoice)
+
+
+async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> InvoiceOut:
+    # 1. Fetch the Order
+    result = await db.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+        
+    if not order.franchise_id:
+        raise HTTPException(status_code=400, detail="Order is not linked to a franchise")
+
+    # 2. Check if already invoiced
+    io_result = await db.execute(select(InvoiceOrder).where(InvoiceOrder.order_id == order_id))
+    if io_result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="This order is already invoiced")
+
+    # 3. Build Rate Calculator Request
+    # Handle missing packages fallback
+    boxes = []
+    if hasattr(order, 'packages') and order.packages:
+        boxes = [
+            BoxInput(
+                length=pkg.length_cm,
+                breadth=pkg.breadth_cm,
+                height=pkg.height_cm,
+                physical_weight=pkg.physical_weight_kg
+            ) for pkg in order.packages
+        ]
+    else:
+        # Fallback if no packages exist
+        boxes = [BoxInput(length=10, breadth=10, height=10, physical_weight=1.0)]
+
+    req = RateCalculationRequest(
+        pickup_pincode=order.pickup_address.pincode if order.pickup_address else "682001",
+        delivery_pincode=order.consignee.pincode if order.consignee else "600001",
+        shipment_type="SURFACE", # Defaulting as Order currently doesn't store Air/Surface
+        payment_mode=order.payment_method,
+        declared_value=float(order.order_value),
+        customer_type=order.order_type, # Maps B2B/B2C from Order
+        boxes=boxes,
+        requires_appointment=False,
+        requires_insurance=False
+    )
+
+    # 4. Calculate Rate
+    try:
+        rate_response = await calculate_rate(db, req)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Rate calculation failed: {str(e)}")
+
+    # Update Order shipping charge based on calculation
+    order.shipping_charge = rate_response.final_amount
+
+    # 5. Create Invoice
+    invoice_number = await _generate_invoice_number(db)
+    
+    invoice = Invoice(
+        id=str(uuid.uuid4()),
+        invoice_number=invoice_number,
+        franchise_id=order.franchise_id,
+        description=f"Generated invoice for Order {order.order_number}",
+        period_start=datetime.utcnow().date(),
+        period_end=datetime.utcnow().date(),
+        subtotal=rate_response.taxable_amount,
+        tax_rate=rate_response.gst_percentage,
+        tax_amount=rate_response.gst_amount,
+        total_amount=rate_response.final_amount,
+        orders_count=1,
+        status="issued",
+    )
+    db.add(invoice)
+    await db.flush()
+
+    # 6. Link to Order
+    io = InvoiceOrder(
+        id=str(uuid.uuid4()),
+        invoice_id=invoice.id,
+        order_id=order.id,
+        shipping_charge=rate_response.final_amount,
+    )
+    db.add(io)
+
+    await db.commit()
+    await db.refresh(invoice)
+
+    logger.info(f"Individual Invoice generated for order {order.order_number}: #{invoice_number}")
     return InvoiceOut.model_validate(invoice)
 
 
