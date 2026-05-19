@@ -716,6 +716,9 @@ async def get_pincode_from_gps(
     if not gps_data or not gps_data.get("pincode"):
         raise HTTPException(status_code=400, detail="Could not determine pincode")
     gps_pincode = str(gps_data["pincode"]).strip()
+    gps_pincode = gps_pincode.replace(".0", "")
+    gps_pincode = "".join(filter(str.isdigit, gps_pincode))
+    print('gps_pincode',gps_pincode)
     stmt = (
         select(Order)
         .options(
@@ -740,7 +743,8 @@ async def get_pincode_from_gps(
         raise HTTPException(status_code=404, detail="Consignee not found")
 
     print("gps_pincode gps_pincode  ",gps_pincode)
-    if pickup.pincode == gps_pincode:
+    pickup_pincode = str(pickup.pincode).strip()
+    if pickup_pincode == gps_pincode:
         existing = await db.execute(select(PickupToConsignees).where(PickupToConsignees.order_id == order.id))
         if existing.scalar_one_or_none():
             raise HTTPException(status_code=409, detail="Pickup already done")
@@ -772,18 +776,16 @@ async def get_pincode_from_gps(
     warehouse_index = 0
     for i, mapping in enumerate(warehouse_mappings, start=1):
         wh = mapping.warehouse_address
-        if wh and wh.pincode == gps_pincode:
+        if wh and str(wh.pincode).strip() == gps_pincode:    
             matched_warehouse = wh
             warehouse_index = i
             break
 
     if matched_warehouse:
         existing = await db.execute(select(WarehouseToDelivery).where(WarehouseToDelivery.order_id == order.id))
-        # if existing.scalar_one_or_none():
-        #     raise HTTPException(status_code=409, detail="Warehouse already done")
+        
         
         status = build_order_warehousestatus(warehouse_mappings, warehouse_index)
-        # status = (OrderStatus.WAREHOUSE if len(warehouse_mappings) == 1 else f"{OrderStatus.WAREHOUSE}_{warehouse_index}")
         entry = WarehouseToDelivery(pincode=matched_warehouse.pincode,status=status,order_id=order.id,warehouse_addresses_id=matched_warehouse.id,user_id=current_user.id)
         db.add(entry)
         order.status = status
@@ -791,7 +793,6 @@ async def get_pincode_from_gps(
         await create_notification(db=db,title="Order WAREHOUSE",message=f"Order {order.order_number} {status} successfully",type="order",order_id=order.id,)
         await db.commit()
         await db.refresh(entry)
-        # return {"stage": status, "order_id": order.id}
         return {
         "stage": status,
         "order_id": order.id,
@@ -817,7 +818,7 @@ async def get_pincode_from_gps(
     for i, mapping in enumerate(franchise_mappings, start=1):
         fr = mapping.franchise_address   
         print('fr.pincode   ',fr.pincode)
-        if fr and gps_pincode == fr.pincode:    
+        if fr and str(fr.pincode).strip() == gps_pincode:   
             matched_franchise = fr
             franchise_index = i
             
@@ -825,11 +826,8 @@ async def get_pincode_from_gps(
     print('matched_franchise  ',matched_franchise)    
     if matched_franchise:
         existing = await db.execute(select(FranchiseToDelivery).where(FranchiseToDelivery.order_id == order.id))
-        # if existing.scalar_one_or_none():
-        #     raise HTTPException(status_code=409, detail="Franchise already done")
         
         status = build_order_franchisestatus(franchise_mappings, franchise_index)
-        # status = (OrderStatus.DISPATCHED if len(franchise_mappings) == 1 else f"{OrderStatus.DISPATCHED}_{franchise_index}")
         entry = FranchiseToDelivery(pincode=matched_franchise.pincode,status=status,order_id=order.id,franchise_addresses_id=matched_franchise.id,user_id=current_user.id)
         db.add(entry)
         order.status = status
@@ -837,7 +835,6 @@ async def get_pincode_from_gps(
         await create_notification(db=db,title="Order DISPATCHED",message=f"Order {order.order_number} {status} successfully",type="order",order_id=order.id,)
         await db.commit()
         await db.refresh(entry)
-        # return {"stage": status, "order_id": order.id}
         return {
         "stage": status,
         "order_id": order.id,
@@ -856,8 +853,8 @@ async def get_pincode_from_gps(
         }
             
     
-    
-    if int(consignee.pincode) == int(gps_pincode):  
+    consignee_pincode = str(consignee.pincode).strip()
+    if consignee_pincode == gps_pincode:  
         print("consignee.pincode == gps_pincode",consignee.pincode,"   ",gps_pincode)  
         existing = await db.execute(select(ConsigneeToDelivery).where(ConsigneeToDelivery.order_id == order.id))
         if existing.scalar_one_or_none():
@@ -888,7 +885,7 @@ async def get_pincode_from_gps(
         
         
         
-    warehouse_stmt = await db.execute(select(WareHouseAddress).where(WareHouseAddress.pincode == gps_pincode))
+    warehouse_stmt = await db.execute(select(WareHouseAddress).where(func.replace(func.trim(WareHouseAddress.pincode), ' ', '') == gps_pincode))
     global_warehouse = warehouse_stmt.scalar_one_or_none()
     if global_warehouse:
         existing_mapping_stmt = await db.execute(
@@ -935,7 +932,7 @@ async def get_pincode_from_gps(
     
     
     
-    franchise_stmt = await db.execute(select(Franchise).where(Franchise.pincode == gps_pincode))
+    franchise_stmt = await db.execute(select(Franchise).where(func.replace(func.trim(Franchise.pincode), ' ', '') == gps_pincode))
     global_franchise = franchise_stmt.scalar_one_or_none()
     if global_franchise:
         existing_mapping_stmt = await db.execute(
