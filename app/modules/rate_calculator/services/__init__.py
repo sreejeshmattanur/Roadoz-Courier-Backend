@@ -1,0 +1,1 @@
+"""Rate calculator service layer."""

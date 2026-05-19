@@ -10,4 +10,14 @@ from app.modules.rate_calculator.schemas.rate_calculator import (
     ShipmentType,
 )
 
-BoxInput = RatePackageInput
+__all__ = [
+    "CalculatorType",
+    "PaymentMode",
+    "PricingBreakdown",
+    "RateCalculationData",
+    "RateCalculationRequest",
+    "RateCalculationResponse",
+    "RatePackageInput",
+    "RiskType",
+    "ShipmentType",
+]
