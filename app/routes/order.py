@@ -35,6 +35,8 @@ from app.schemas.order import (
     
 
 )
+from app.models.user_role import UserRole
+from app.models.role import Role
 from app.models.consigeeauth import AuthUser
 from app.utils.webconfig import check_maintenance_mode
 from app.services.order_service import (
@@ -1030,126 +1032,7 @@ class FilterableStatus(str, Enum):
     DELIVERED = "Delivered"
 
        
-# @router.post("/orders/today-statu")
-# async def get_today_status_orders(
-#     payload: TodayStatusRequest,
-#     status: FilterableStatus = Query(..., description="Dispatched | Picked | Cancelled | Delivered"),
-#     page: int = Query(1, ge=1, description="Page number"),
-#     limit: int = Query(10, ge=1, le=100, description="Items per page"),
-#     db: AsyncSession = Depends(get_db),
-#     current_user: User = Depends(get_current_user),):
-    
-#     today = payload.date
-#     offset = (page - 1) * limit
 
-#     consignee_order_ids = (
-#         select(ConsigneeToDelivery.order_id)
-#         .where(
-#             ConsigneeToDelivery.user_id == current_user.id,
-#             func.date(ConsigneeToDelivery.updated_at) == today
-#         )
-#     )
-#     pickup_order_ids = (
-#         select(PickupToConsignees.order_id)
-#         .where(
-#             PickupToConsignees.user_id == current_user.id,
-#             func.date(PickupToConsignees.updated_at) == today
-#         )
-#     )
-#     warehouse_order_ids = (
-#         select(WarehouseToDelivery.order_id)
-#         .where(
-#             WarehouseToDelivery.user_id == current_user.id,
-#             func.date(WarehouseToDelivery.updated_at) == today
-#         )
-#     )
-
-#     base_filter = [
-#         Order.created_by == current_user.id,
-#         Order.status == status.value,
-#         or_(
-#             Order.id.in_(consignee_order_ids),
-#             Order.id.in_(pickup_order_ids),
-#             Order.id.in_(warehouse_order_ids),
-#         )
-#     ]
-
-#     # Get total count
-#     count_stmt = select(func.count()).select_from(Order).where(*base_filter)
-#     total_result = await db.execute(count_stmt)
-#     total = total_result.scalar()
-
-#     # Get paginated orders
-#     stmt = (
-#         select(Order)
-#         .where(*base_filter)
-#         .order_by(Order.created_at.desc())
-#         .offset(offset)
-#         .limit(limit))
-#     result = await db.execute(stmt)
-#     orders = result.scalars().all()
-#     if not orders:
-#         raise HTTPException(status_code=404,detail=f"No orders with status '{status.value}' updated today ({today})")
-#     total_pages = (total + limit - 1) // limit  
-#     return {
-#         "date": str(today),
-#         "status": status.value,
-#         "pagination": {
-#             "page": page,
-#             "limit": limit,
-#             "total": total,
-#             "total_pages": total_pages,
-#             "has_next": page < total_pages,
-#             "has_prev": page > 1,
-#         },
-#         "orders": [
-#             {
-#                 "id": o.id,
-#                 "order_number": o.order_number,
-#                 "order_type": o.order_type,
-#                 "created_by": o.created_by,
-#                 "status": o.status,
-#                 "payment_method": o.payment_method,
-#                 "cod_amount": float(o.cod_amount) if o.cod_amount else None,
-#                 "order_value": float(o.order_value),
-#                 "total_weight_kg": float(o.total_weight_kg),
-#                 "applicable_weight_kg": float(o.applicable_weight_kg),
-#                 "shipping_charge": float(o.shipping_charge),
-#                 "total_boxes": o.total_boxes,
-#                 "created_at": o.created_at,
-#                 "updated_at": o.updated_at,
-#                 "items": [
-#                     {
-#                         "product_name": item.product_name,
-#                         "sku": item.sku,
-#                         "unit_price": float(item.unit_price),
-#                         "qty": item.qty,
-#                         "total": float(item.total),
-#                     }
-#                     for item in o.items
-#                 ],
-#                 "packages": [
-#                     {
-#                         "count": pkg.count,
-#                         "length_cm": float(pkg.length_cm),
-#                         "breadth_cm": float(pkg.breadth_cm),
-#                         "height_cm": float(pkg.height_cm),
-#                         "physical_weight_kg": float(pkg.physical_weight_kg),
-#                         "vol_weight_kg": float(pkg.vol_weight_kg),
-#                     }
-#                     for pkg in o.packages
-#                 ],
-#                 "pickup_address": {
-#                     "id": o.pickup_address.id,
-#                 } if o.pickup_address else None,
-#                 "consignee": {
-#                     "id": o.consignee.id,
-#                     "name": o.consignee.name,
-#                 } if o.consignee else None,
-#             }
-#             for o in orders
-#         ]
-#     }    
 
 
 
@@ -1161,18 +1044,52 @@ async def get_today_status_orders(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),):
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:view")),
+):
+    role_result = await db.execute(
+        select(Role.name)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(UserRole.user_id == current_user.id)
+    )
+
+    role_name = role_result.scalar_one_or_none()
     today = payload.date
     offset = (page - 1) * limit
-    base_filter = [Order.status == status.value,func.date(Order.updated_at) == today]
-    count_stmt = (select(func.count()).select_from(Order).where(*base_filter))
+    base_filter = [
+        Order.status == status.value,
+        func.date(Order.updated_at) == today,
+    ]
+    # Franchise and Staff -> only own orders
+    if role_name != "super_admin":
+        base_filter.append(
+            Order.created_by == current_user.id
+        )
+    count_stmt = (
+        select(func.count())
+        .select_from(Order)
+        .where(*base_filter)
+    )
+
     total_result = await db.execute(count_stmt)
     total = total_result.scalar()
-    stmt = (select(Order).where(*base_filter).order_by(Order.updated_at.desc()).offset(offset).limit(limit))
+    stmt = (
+        select(Order)
+        .where(*base_filter)
+        .order_by(Order.updated_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
+
     orders = result.scalars().unique().all()
+
     if not orders:
-        raise HTTPException(status_code=404,detail=f"No orders with status '{status.value}' found for {today}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No orders with status '{status.value}' found for {today}"
+        )
+
     total_pages = (total + limit - 1) // limit
 
     return {
@@ -1240,6 +1157,12 @@ async def get_today_status_orders(
             for o in orders
         ]
     }
+
+
+
+
+
+
 
 
 
@@ -1594,3 +1517,54 @@ async def delete_scanned_order(
         "deleted_id": id,
         "order_id": order_id,
     }    
+    
+    
+    
+    
+    
+    
+    
+    
+@router.post("/orders/date-wise-all-status")
+async def get_date_wise_all_status(
+    payload: TodayStatusRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:view")),
+):
+    role_result = await db.execute(select(Role.name).join(UserRole, UserRole.role_id == Role.id).where(UserRole.user_id == current_user.id))
+    role_name = role_result.scalar_one_or_none()
+    today = payload.date
+    order_filters = [func.date(Order.updated_at) == today]
+    if role_name != "super_admin":
+        order_filters.append(Order.created_by == current_user.id)
+    order_result = await db.execute(select(Order.status).where(*order_filters))
+    order_statuses = [row[0] for row in order_result.all()]
+    warehouse_filters = [func.date(WarehouseToDelivery.updated_at) == today]
+    if role_name != "super_admin":
+        warehouse_filters.append(WarehouseToDelivery.user_id == current_user.id)
+    warehouse_result = await db.execute(select(WarehouseToDelivery.status).where(*warehouse_filters))
+    warehouse_statuses = [row[0] for row in warehouse_result.all()]
+    franchise_filters = [func.date(FranchiseToDelivery.updated_at) == today]
+    if role_name != "super_admin":
+        franchise_filters.append(FranchiseToDelivery.user_id == current_user.id)
+    franchise_result = await db.execute(select(FranchiseToDelivery.status).where(*franchise_filters))
+    franchise_statuses = [row[0] for row in franchise_result.all()]
+    pickup_filters = [func.date(PickupToConsignees.updated_at) == today]
+    if role_name != "super_admin":
+        pickup_filters.append(PickupToConsignees.user_id == current_user.id)
+    pickup_result = await db.execute(select(PickupToConsignees.status).where(*pickup_filters))
+    pickup_statuses = [row[0] for row in pickup_result.all()]
+    consignee_filters = [func.date(ConsigneeToDelivery.updated_at) == today]
+    if role_name != "super_admin":
+        consignee_filters.append(ConsigneeToDelivery.user_id == current_user.id)
+    consignee_result = await db.execute(
+        select(ConsigneeToDelivery.status)
+        .where(*consignee_filters))
+    consignee_statuses = [row[0] for row in consignee_result.all()]
+    all_statuses = (order_statuses +warehouse_statuses +franchise_statuses +pickup_statuses +consignee_statuses)
+    unique_statuses = list(set(all_statuses))
+    return {
+    "date": str(today),
+    "statuses": unique_statuses
+    }
