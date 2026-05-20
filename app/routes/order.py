@@ -211,8 +211,8 @@ async def create_bulk_orders_endpoint(
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:create")),
 ):
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        raise HTTPException(status_code=400, detail="Only Excel files are supported.")
+    if not file.filename.lower().endswith((".xlsx", ".xls", ".csv")):
+        raise HTTPException(status_code=400, detail="Only Excel and CSV files are supported.")
     
     file_content = await file.read()
     return await process_bulk_excel_upload(
@@ -1347,6 +1347,7 @@ async def get_all_orders_by_status(
     
     
     
+
     
 from fastapi import status
 

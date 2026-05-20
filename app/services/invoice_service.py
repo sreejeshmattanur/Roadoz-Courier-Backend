@@ -18,8 +18,8 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     InvoiceGenerateRequest,
 )
-from app.schemas.rate_calculator import RateCalculationRequest, BoxInput
-from app.services.rate_calculator.rate_calculator_service import calculate_rate
+from app.models.order import BulkOrder
+from app.services.order_service import calculate_order_shipping_charge
 
 logger = logging.getLogger(__name__)
 
@@ -90,9 +90,9 @@ async def generate_invoice(
             detail="No uninvoiced orders with shipping charges found in this period",
         )
 
-    subtotal = sum(float(o.shipping_charge) for o in orders)
-    tax_amount = round(subtotal * data.tax_rate / 100, 2)
-    total_amount = round(subtotal + tax_amount, 2)
+    total_amount = round(sum(float(o.shipping_charge) for o in orders), 2)
+    subtotal = round(total_amount / (1 + data.tax_rate / 100), 2)
+    tax_amount = round(total_amount - subtotal, 2)
 
     invoice_number = await _generate_invoice_number(db)
 
@@ -152,45 +152,29 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
     if io_result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="This order is already invoiced")
 
-    # 3. Build Rate Calculator Request
-    # Handle missing packages fallback
-    boxes = []
-    if hasattr(order, 'packages') and order.packages:
-        boxes = [
-            BoxInput(
-                length=pkg.length_cm,
-                breadth=pkg.breadth_cm,
-                height=pkg.height_cm,
-                physical_weight=pkg.physical_weight_kg
-            ) for pkg in order.packages
-        ]
-    else:
-        # Fallback if no packages exist
-        boxes = [BoxInput(length=10, breadth=10, height=10, physical_weight=1.0)]
-
-    req = RateCalculationRequest(
-        pickup_pincode=order.pickup_address.pincode if order.pickup_address else "682001",
-        delivery_pincode=order.consignee.pincode if order.consignee else "600001",
-        shipment_type="SURFACE", # Defaulting as Order currently doesn't store Air/Surface
-        payment_mode=order.payment_method,
-        declared_value=float(order.order_value),
-        customer_type=order.order_type, # Maps B2B/B2C from Order
-        boxes=boxes,
-        requires_appointment=False,
-        requires_insurance=False
-    )
-
     # 4. Calculate Rate
     try:
-        rate_response = await calculate_rate(db, req)
+        final_amount = await calculate_order_shipping_charge(
+            db,
+            order_type=order.order_type,
+            pickup_pincode=order.pickup_address.pincode,
+            delivery_pincode=order.consignee.pincode,
+            payment_method=order.payment_method,
+            rov=order.rov,
+            order_value=float(order.order_value),
+            packages=order.packages,
+        )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Rate calculation failed: {str(e)}")
 
     # Update Order shipping charge based on calculation
-    order.shipping_charge = rate_response.final_amount
+    order.shipping_charge = final_amount
 
     # 5. Create Invoice
     invoice_number = await _generate_invoice_number(db)
+    tax_rate = 18.0
+    subtotal = round(final_amount / (1 + tax_rate / 100), 2)
+    tax_amount = round(final_amount - subtotal, 2)
     
     invoice = Invoice(
         id=str(uuid.uuid4()),
@@ -199,10 +183,10 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
         description=f"Generated invoice for Order {order.order_number}",
         period_start=datetime.utcnow().date(),
         period_end=datetime.utcnow().date(),
-        subtotal=rate_response.taxable_amount,
-        tax_rate=rate_response.gst_percentage,
-        tax_amount=rate_response.gst_amount,
-        total_amount=rate_response.final_amount,
+        subtotal=subtotal,
+        tax_rate=tax_rate,
+        tax_amount=tax_amount,
+        total_amount=final_amount,
         orders_count=1,
         status="issued",
     )
@@ -214,7 +198,7 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
         id=str(uuid.uuid4()),
         invoice_id=invoice.id,
         order_id=order.id,
-        shipping_charge=rate_response.final_amount,
+        shipping_charge=final_amount,
     )
     db.add(io)
 
@@ -223,6 +207,80 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
 
     logger.info(f"Individual Invoice generated for order {order.order_number}: #{invoice_number}")
     return InvoiceOut.model_validate(invoice)
+
+
+async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) -> list[InvoiceOut]:
+    result = await db.execute(select(BulkOrder).where(BulkOrder.id == bulk_order_id))
+    bulk_order = result.scalar_one_or_none()
+    if not bulk_order:
+        raise HTTPException(status_code=404, detail="Bulk order not found")
+    if not bulk_order.franchise_id:
+        raise HTTPException(status_code=400, detail="Bulk order is not linked to a franchise")
+
+    orders_result = await db.execute(
+        select(Order).where(
+            and_(
+                Order.bulk_order_id == bulk_order_id,
+                Order.shipping_charge > 0,
+                ~Order.id.in_(select(InvoiceOrder.order_id)),
+            )
+        )
+    )
+    orders = orders_result.scalars().all()
+
+    if not orders:
+        raise HTTPException(
+            status_code=400,
+            detail="No uninvoiced bulk orders with shipping charges found.",
+        )
+
+    tax_rate = 18.0
+    invoice_count = (await db.execute(select(func.count()).select_from(Invoice))).scalar_one()
+    invoice_ids = []
+
+    for index, order in enumerate(orders, start=1):
+        total_amount = round(float(order.shipping_charge), 2)
+        subtotal = round(total_amount / (1 + tax_rate / 100), 2)
+        tax_amount = round(total_amount - subtotal, 2)
+        invoice = Invoice(
+            id=str(uuid.uuid4()),
+            invoice_number=str(invoice_count + index),
+            franchise_id=bulk_order.franchise_id,
+            description=f"Generated invoice for Order {order.order_number} from bulk upload {bulk_order.file_name}",
+            period_start=datetime.utcnow().date(),
+            period_end=datetime.utcnow().date(),
+            subtotal=subtotal,
+            tax_rate=tax_rate,
+            tax_amount=tax_amount,
+            total_amount=total_amount,
+            orders_count=1,
+            status="issued",
+        )
+        db.add(
+            invoice
+        )
+        await db.flush()
+        invoice_ids.append(invoice.id)
+        db.add(
+            InvoiceOrder(
+                id=str(uuid.uuid4()),
+                invoice_id=invoice.id,
+                order_id=order.id,
+                shipping_charge=total_amount,
+            )
+        )
+
+    await db.commit()
+
+    invoices_result = await db.execute(
+        select(Invoice)
+        .where(Invoice.id.in_(invoice_ids))
+        .order_by(Invoice.created_at.asc())
+    )
+    invoices = invoices_result.scalars().all()
+
+    logger.info("Bulk order invoices generated: bulk_order=%s, invoices=%s", bulk_order_id, len(invoices))
+    return [InvoiceOut.model_validate(invoice) for invoice in invoices]
 
 
 # ── List invoices ─────────────────────────────────────────────────────────

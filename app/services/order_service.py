@@ -1,6 +1,7 @@
 import math
 import uuid
 import logging
+import csv
 from datetime import datetime
 
 from fastapi import HTTPException, status
@@ -45,9 +46,106 @@ from sqlalchemy.orm import Session
 
 import openpyxl
 from io import BytesIO
+from app.schemas.rate_calculator import RateCalculationRequest, RatePackageInput
+from app.services.rate_calculator.rate_calculator_service import calculate_rate
 logger = logging.getLogger(__name__)
 
 VOL_DIVIDEND_B2C = 5000
+
+
+def _normalize_payment_mode(payment_method: str) -> str:
+    value = str(payment_method).strip().lower().replace("_", " ")
+    mapping = {
+        "cod": "COD",
+        "prepaid": "PREPAID",
+        "to pay": "TO_PAY",
+        "topay": "TO_PAY",
+    }
+    if value not in mapping:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unsupported payment_method: {payment_method}")
+    return mapping[value]
+
+
+def _normalize_risk_type(rov: str) -> str:
+    value = str(rov).strip().lower().replace(" ", "_")
+    mapping = {
+        "owner_risk": "OWNER_RISK",
+        "carrier_risk": "CARRIER_RISK",
+    }
+    if value not in mapping:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unsupported rov: {rov}")
+    return mapping[value]
+
+
+def _normalize_order_payment_method(payment_method: str) -> str:
+    value = str(payment_method).strip().lower().replace("_", " ")
+    mapping = {
+        "cod": "COD",
+        "prepaid": "Prepaid",
+        "to pay": "To Pay",
+        "topay": "To Pay",
+    }
+    if value not in mapping:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unsupported payment_method: {payment_method}")
+    return mapping[value]
+
+
+def _normalize_order_rov(rov: str) -> str:
+    value = str(rov).strip().lower().replace(" ", "_")
+    mapping = {
+        "owner_risk": "owner_risk",
+        "carrier_risk": "carrier_risk",
+    }
+    if value not in mapping:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unsupported rov: {rov}")
+    return mapping[value]
+
+
+async def calculate_order_shipping_charge(
+    db: AsyncSession,
+    *,
+    order_type: str,
+    pickup_pincode: str,
+    delivery_pincode: str,
+    payment_method: str,
+    rov: str,
+    order_value: float,
+    packages: list,
+) -> float:
+    if str(order_type).strip() == "International":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Rate calculation is not configured for International orders.",
+        )
+
+    def package_value(package, attr: str):
+        if isinstance(package, dict):
+            return package[attr]
+        return getattr(package, attr)
+
+    rate_packages = [
+        RatePackageInput(
+            count=int(package_value(package, "count")),
+            length=float(package_value(package, "length_cm")),
+            breadth=float(package_value(package, "breadth_cm")),
+            height=float(package_value(package, "height_cm")),
+            physical_weight=float(package_value(package, "physical_weight_kg")),
+        )
+        for package in packages
+    ]
+
+    request = RateCalculationRequest(
+        calculator_type=str(order_type).strip(),
+        pickup_pincode=str(pickup_pincode).strip(),
+        delivery_pincode=str(delivery_pincode).strip(),
+        shipment_type="FORWARD",
+        payment_mode=_normalize_payment_mode(payment_method),
+        risk_type=_normalize_risk_type(rov),
+        declared_value=float(order_value or 0),
+        packages=rate_packages,
+    )
+    rate_response = await calculate_rate(db, request)
+    return float(rate_response.data.pricing.final_amount)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -542,7 +640,19 @@ async def create_order(
     order.total_weight_kg = round(total_weight, 2)
     order.total_vol_weight_kg = round(total_vol, 2)
     order.applicable_weight_kg = round(applicable, 2)
-    order.shipping_charge = data.shipping_charge
+    shipping_charge = float(data.shipping_charge or 0)
+    if shipping_charge <= 0:
+        shipping_charge = await calculate_order_shipping_charge(
+            db,
+            order_type=data.order_type.value,
+            pickup_pincode=pickup.pincode,
+            delivery_pincode=consignee.pincode,
+            payment_method=data.payment_method.value,
+            rov=data.rov.value,
+            order_value=data.order_value,
+            packages=data.packages,
+        )
+    order.shipping_charge = shipping_charge
 
     # Generate barcode from order number
     order.barcode = generate_barcode_base64(order_number)
@@ -550,8 +660,8 @@ async def create_order(
     await db.flush()
 
     # Debit wallet if shipping charge > 0 and franchise is linked
-    if data.shipping_charge > 0 and franchise_id:
-        await debit_for_order(db, franchise_id, order.id, data.shipping_charge)
+    if shipping_charge > 0 and franchise_id:
+        await debit_for_order(db, franchise_id, order.id, shipping_charge)
 
     # Reload all columns (created_at, updated_at, etc.) + relationships
     await db.refresh(order)
@@ -586,10 +696,18 @@ async def process_bulk_excel_upload(
     db.add(bulk_order)
     await db.flush()
 
-    wb = openpyxl.load_workbook(filename=BytesIO(file_content), data_only=True)
-    sheet = wb.active
-
-    headers = [str(cell.value).strip().lower() if cell.value else "" for cell in sheet[1]]
+    if file_name.lower().endswith(".csv"):
+        decoded = file_content.decode("utf-8-sig")
+        csv_rows = list(csv.reader(decoded.splitlines()))
+        if not csv_rows:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV file is empty.")
+        headers = [str(value).strip().lower() if value else "" for value in csv_rows[0]]
+        data_rows = csv_rows[1:]
+    else:
+        wb = openpyxl.load_workbook(filename=BytesIO(file_content), data_only=True)
+        sheet = wb.active
+        headers = [str(cell.value).strip().lower() if cell.value else "" for cell in sheet[1]]
+        data_rows = list(sheet.iter_rows(min_row=2, values_only=True))
     
     col_map = {
         "consignee_name": headers.index("consignee_name") if "consignee_name" in headers else -1,
@@ -617,7 +735,7 @@ async def process_bulk_excel_upload(
     errors = []
     success_count = 0
 
-    for idx, row in enumerate(sheet.iter_rows(min_row=2, values_only=True), start=2):
+    for idx, row in enumerate(data_rows, start=2):
         try:
             if not any(row):
                 continue
@@ -637,48 +755,47 @@ async def process_bulk_excel_upload(
                 state=str(get_val("state", ""))
             )
             
-            async with db.begin_nested():
-                consignee_out = await create_consignee(db, consignee_data, current_user)
-                
-                payment_method = str(get_val("payment_method", "Prepaid"))
-                order_data = OrderCreate(
-                    order_type=order_type,
-                    pickup_address_id=pickup_address_id,
-                    consignee_id=consignee_out.id,
-                    payment_method=payment_method,
-                    cod_amount=float(get_val("cod_amount") or 0) if payment_method == "COD" else None,
-                    to_pay_amount=float(get_val("to_pay_amount") or 0) if payment_method == "To Pay" else None,
-                    rov=str(get_val("rov", "owner_risk")),
-                    order_value=float(get_val("order_value") or 0),
-                    items=[
-                        {
-                            "product_name": str(get_val("product_name", "Product")),
-                            "sku": get_val("sku"),
-                            "unit_price": float(get_val("unit_price") or 0),
-                            "qty": int(get_val("qty") or 1),
-                            "total": float(get_val("unit_price") or 0) * int(get_val("qty") or 1)
-                        }
-                    ],
-                    packages=[
-                        {
-                            "count": 1,
-                            "length_cm": float(get_val("length_cm") or 1),
-                            "breadth_cm": float(get_val("breadth_cm") or 1),
-                            "height_cm": float(get_val("height_cm") or 1),
-                            "vol_weight_kg": (float(get_val("length_cm") or 1) * float(get_val("breadth_cm") or 1) * float(get_val("height_cm") or 1)) / 5000,
-                            "physical_weight_kg": float(get_val("physical_weight_kg") or 1)
-                        }
-                    ],
-                    shipping_charge=0 
-                )
-                
-                order_out = await create_order(db, order_data, current_user)
-                
-                # Update bulk_order_id directly
-                order = await db.get(Order, order_out.id)
-                order.bulk_order_id = bulk_order.id
-                
-                success_count += 1
+            consignee_out = await create_consignee(db, consignee_data, current_user)
+            
+            payment_method = _normalize_order_payment_method(str(get_val("payment_method", "Prepaid")))
+            order_data = OrderCreate(
+                order_type=order_type,
+                pickup_address_id=pickup_address_id,
+                consignee_id=consignee_out.id,
+                payment_method=payment_method,
+                cod_amount=float(get_val("cod_amount") or 0) if payment_method == "COD" else None,
+                to_pay_amount=float(get_val("to_pay_amount") or 0) if payment_method == "To Pay" else None,
+                rov=_normalize_order_rov(str(get_val("rov", "owner_risk"))),
+                order_value=float(get_val("order_value") or 0),
+                items=[
+                    {
+                        "product_name": str(get_val("product_name", "Product")),
+                        "sku": get_val("sku"),
+                        "unit_price": float(get_val("unit_price") or 0),
+                        "qty": int(get_val("qty") or 1),
+                        "total": float(get_val("unit_price") or 0) * int(get_val("qty") or 1)
+                    }
+                ],
+                packages=[
+                    {
+                        "count": 1,
+                        "length_cm": float(get_val("length_cm") or 1),
+                        "breadth_cm": float(get_val("breadth_cm") or 1),
+                        "height_cm": float(get_val("height_cm") or 1),
+                        "vol_weight_kg": (float(get_val("length_cm") or 1) * float(get_val("breadth_cm") or 1) * float(get_val("height_cm") or 1)) / 5000,
+                        "physical_weight_kg": float(get_val("physical_weight_kg") or 1)
+                    }
+                ],
+                shipping_charge=0 
+            )
+            
+            order_out = await create_order(db, order_data, current_user)
+            
+            # Update bulk_order_id directly
+            order = await db.get(Order, order_out.id)
+            order.bulk_order_id = bulk_order.id
+            
+            success_count += 1
                 
         except Exception as exc:
             logger.error(f"Row {idx} failed: {str(exc)}")
@@ -687,7 +804,7 @@ async def process_bulk_excel_upload(
     bulk_order.total_orders = success_count + len(errors)
     bulk_order.successful_orders = success_count
     bulk_order.failed_orders = len(errors)
-    bulk_order.status = "Completed" if len(errors) == 0 else "Completed With Errors"
+    bulk_order.status = "Completed" if len(errors) == 0 else "Completed Errors"
     
     await db.commit()
     await db.refresh(bulk_order)

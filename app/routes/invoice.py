@@ -18,6 +18,7 @@ from app.services.invoice_service import (
     get_invoice,
     mark_paid,
     generate_invoice_for_order,
+    generate_invoice_for_bulk_order,
 )
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
@@ -76,6 +77,16 @@ async def generate_invoice_for_order_endpoint(
     _: User = Depends(require_permission("invoices:generate")),
 ):
     return await generate_invoice_for_order(db, order_id)
+
+
+@router.post("/generate/bulk/{bulk_order_id}", response_model=list[InvoiceOut], status_code=201)
+async def generate_invoice_for_bulk_order_endpoint(
+    bulk_order_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("invoices:generate")),
+):
+    return await generate_invoice_for_bulk_order(db, bulk_order_id)
 
 
 # ── Mark invoice as paid (admin) ─────────────────────────────────────────

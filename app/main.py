@@ -14,7 +14,7 @@ from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHea
 from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, ActivityLoggingMiddleware
 from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration,notification
-from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration, analytics,user_admincommunication, rate_calculator
+from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration, analytics,user_admincommunication, rate_calculator, reports, prints, operations
 from app.models.activity_log import ActivityLog
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 
@@ -195,13 +195,15 @@ from app.core.database import AsyncSessionLocal
 from sqlalchemy import delete
 from app.models.activity_log import ActivityLog
 
+ACTIVITY_LOG_RETENTION_DAYS = 7
+
 async def _cleanup_activity_logs():
-    """Background task to delete activity logs older than 3 days."""
+    """Background task to delete expired activity logs."""
     while True:
         try:
             async with AsyncSessionLocal() as db:
-                three_days_ago = datetime.utcnow() - timedelta(days=3)
-                await db.execute(delete(ActivityLog).where(ActivityLog.created_at < three_days_ago))
+                expiry_cutoff = datetime.utcnow() - timedelta(days=ACTIVITY_LOG_RETENTION_DAYS)
+                await db.execute(delete(ActivityLog).where(ActivityLog.created_at < expiry_cutoff))
                 await db.commit()
         except Exception as e:
             logger.error(f"Error cleaning up activity logs: {e}")
@@ -321,6 +323,9 @@ app.include_router(notification.router,prefix=API_PREFIX)
 app.include_router(websocket_router, prefix=API_PREFIX)
 app.include_router(user_admincommunication.router,prefix=API_PREFIX)
 app.include_router(rate_calculator.router,prefix=API_PREFIX)
+app.include_router(reports.router,prefix=API_PREFIX)
+app.include_router(prints.router,prefix=API_PREFIX)
+app.include_router(operations.router,prefix=API_PREFIX)
 
 
 @app.get("/", tags=["Health"])

@@ -42,7 +42,7 @@ class BulkOrder(Base):
     pickup_address_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("pickup_addresses.id", ondelete="RESTRICT"), nullable=False
     )
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="Processing")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="Processing")
     total_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     successful_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     failed_orders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
