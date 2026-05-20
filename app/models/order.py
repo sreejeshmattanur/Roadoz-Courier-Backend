@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Numeric, Integer, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from typing import Optional
 from app.core.database import Base
 from enum import Enum
 from sqlalchemy import Enum as SqlEnum
@@ -113,6 +113,7 @@ class Order(Base):
     barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Status
+    previous_status: Mapped[Optional[str]] = mapped_column(String(150),nullable=True)
     status: Mapped[str] = mapped_column(String(150), nullable=False, server_default=text("'Processing'"))
     # status: Mapped[OrderStatus] = mapped_column(
     #             SqlEnum(OrderStatus),

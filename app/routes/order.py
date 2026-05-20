@@ -752,6 +752,7 @@ async def get_pincode_from_gps(
             raise HTTPException(status_code=409, detail="Pickup already done")
         entry = PickupToConsignees(pincode=pickup.pincode,status=OrderStatus.PICKED,order_id=order.id,pickup_addresses_id=pickup.id,user_id=current_user.id)
         db.add(entry)
+        order.previous_status=order.status
         order.status = OrderStatus.PICKED
         order.updated_at = datetime.now(IST)
         await create_notification(db=db,title="Order Picked",message=f"Order {order.order_number} picked",type="order",order_id=order.id,)
@@ -792,6 +793,7 @@ async def get_pincode_from_gps(
         status = build_order_warehousestatus(warehouse_mappings, warehouse_index)
         entry = WarehouseToDelivery(pincode=matched_warehouse.pincode,status=status,order_id=order.id,warehouse_addresses_id=matched_warehouse.id,user_id=current_user.id)
         db.add(entry)
+        order.previous_status=order.status
         order.status = status
         order.updated_at = datetime.now(IST)
         await create_notification(db=db,title="Order WAREHOUSE",message=f"Order {order.order_number} {status} successfully",type="order",order_id=order.id,)
@@ -836,6 +838,7 @@ async def get_pincode_from_gps(
         status = build_order_franchisestatus(franchise_mappings, franchise_index)
         entry = FranchiseToDelivery(pincode=matched_franchise.pincode,status=status,order_id=order.id,franchise_addresses_id=matched_franchise.id,user_id=current_user.id)
         db.add(entry)
+        order.previous_status=order.status
         order.status = status
         order.updated_at = datetime.now(IST)
         await create_notification(db=db,title="Order DISPATCHED",message=f"Order {order.order_number} {status} successfully",type="order",order_id=order.id,)
@@ -867,6 +870,7 @@ async def get_pincode_from_gps(
             raise HTTPException(status_code=409, detail="Already delivered")
         entry = ConsigneeToDelivery(pincode=consignee.pincode,status=OrderStatus.DELIVERED,order_id=order.id,consignee_id=consignee.id,user_id=current_user.id)
         db.add(entry)
+        order.previous_status=order.status
         order.status = OrderStatus.DELIVERED
         order.updated_at = datetime.now(IST)
         await create_notification(db=db,title="Order Delivered",message=f"Order {order.order_number} Delivered successfully",type="order",order_id=order.id,)
@@ -911,7 +915,6 @@ async def get_pincode_from_gps(
             warehouse_mappings.append(new_mapping)
         warehouse_index = len(warehouse_mappings)
         status = build_order_warehousestatus(warehouse_mappings,warehouse_index)
-        
         tracking = WarehouseToDelivery(
             pincode=global_warehouse.pincode,
             status=status,
@@ -919,6 +922,7 @@ async def get_pincode_from_gps(
             warehouse_addresses_id=global_warehouse.id,
             user_id=current_user.id)
         db.add(tracking)
+        order.previous_status=order.status
         order.status = status
         order.updated_at = datetime.now(IST)
         await create_notification(db=db,title="Warehouse Scan",message=f"Order {order.order_number} reached warehouse",type="order",order_id=order.id,)
@@ -969,6 +973,7 @@ async def get_pincode_from_gps(
             user_id=current_user.id
         )
         db.add(tracking)
+        order.previous_status=order.status
         order.status = status
         order.updated_at = datetime.now(IST)
         await create_notification(db=db,title="Franchise Scan",message=f"Order {order.order_number} reached franchise",type="order",order_id=order.id,)
@@ -1347,37 +1352,89 @@ from fastapi import status
 
 
 
+
+
 @router.get("/track_orderwithbarcodeand_orderall_detailed/{barcode}")
 async def track_order_by_barcode(
     barcode: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),):
+    current_user: User = Depends(get_current_user),
+):
+
     decoded_barcode = barcode.strip()
+
     try:
         decoded_barcode = base64.b64decode(decoded_barcode).decode("utf-8")
     except Exception:
         pass
-
     result = await db.execute(
         select(Order)
         .options(
             selectinload(Order.pickup_address),
             selectinload(Order.consignee),
-            selectinload(Order.warehouse_addresses)
-            .selectinload(OrderWarehouseAddress.warehouse_address),
-            selectinload(Order.franchise_addresses)
-            .selectinload(OrderFranchiseAddress.franchise_address),
             selectinload(Order.items),
             selectinload(Order.packages),
         )
         .where(Order.order_number == decoded_barcode)
     )
+
     order = result.scalar_one_or_none()
+
     if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Order not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+    warehouse_result = await db.execute(
+        select(WarehouseToDelivery)
+        .options(
+            selectinload(WarehouseToDelivery.warehouse_address)
+        )
+        .where(WarehouseToDelivery.order_id == order.id)
+    )
+    warehouse_entries = warehouse_result.scalars().all()
+    warehouse_data = []
+    for warehouse in warehouse_entries:
+        if warehouse.warehouse_address:
+            warehouse_data.append({
+                "id": warehouse.warehouse_address.id,
+                "nickname": warehouse.warehouse_address.nickname,
+                "contact_name": warehouse.warehouse_address.contact_name,
+                "phone": warehouse.warehouse_address.phone,
+                "email": warehouse.warehouse_address.email,
+                "address_line_1": warehouse.warehouse_address.address_line_1,
+                "address_line_2": warehouse.warehouse_address.address_line_2,
+                "pincode": warehouse.warehouse_address.pincode,
+                "city": warehouse.warehouse_address.city,
+                "state": warehouse.warehouse_address.state,
+                "country": warehouse.warehouse_address.country,
+                "status": warehouse.status,
+            })
+    franchise_result = await db.execute(
+        select(FranchiseToDelivery)
+        .options(
+            selectinload(FranchiseToDelivery.franchise_address)
+        )
+        .where(FranchiseToDelivery.order_id == order.id)
+    )
 
+    franchise_entries = franchise_result.scalars().all()
+    franchise_data = []
+    for franchise in franchise_entries:
+        if franchise.franchise_address:
+            franchise_data.append({
+                "id": franchise.franchise_address.id,
+                "franchise_code": franchise.franchise_address.franchise_code,
+                "name": franchise.franchise_address.name,
+                "email": franchise.franchise_address.email,
+                "phone": franchise.franchise_address.phone,
+                "address": franchise.franchise_address.address,
+                "pincode": franchise.franchise_address.pincode,
+                "preferred_service_area": franchise.franchise_address.preferred_service_area,
+                "nearby_landmark": franchise.franchise_address.nearby_landmark,
+                "status": franchise.status,
+            })
     pickup_data = None
-
     if order.pickup_address:
         pickup_data = {
             "id": order.pickup_address.id,
@@ -1392,9 +1449,7 @@ async def track_order_by_barcode(
             "state": order.pickup_address.state,
             "country": order.pickup_address.country,
         }
-
     consignee_data = None
-
     if order.consignee:
         consignee_data = {
             "id": order.consignee.id,
@@ -1408,48 +1463,7 @@ async def track_order_by_barcode(
             "city": order.consignee.city,
             "state": order.consignee.state,
         }
-
-    warehouse_data = []
-
-    for warehouse in order.warehouse_addresses:
-
-        if warehouse.warehouse_address:
-
-            warehouse_data.append({
-                "id": warehouse.warehouse_address.id,
-                "nickname": warehouse.warehouse_address.nickname,
-                "contact_name": warehouse.warehouse_address.contact_name,
-                "phone": warehouse.warehouse_address.phone,
-                "email": warehouse.warehouse_address.email,
-                "address_line_1": warehouse.warehouse_address.address_line_1,
-                "address_line_2": warehouse.warehouse_address.address_line_2,
-                "pincode": warehouse.warehouse_address.pincode,
-                "city": warehouse.warehouse_address.city,
-                "state": warehouse.warehouse_address.state,
-                "country": warehouse.warehouse_address.country,
-            })
-
-    franchise_data = []
-
-    for franchise in order.franchise_addresses:
-
-        if franchise.franchise_address:
-
-            franchise_data.append({
-                "id": franchise.franchise_address.id,
-                "franchise_code": franchise.franchise_address.franchise_code,
-                "name": franchise.franchise_address.name,
-                "email": franchise.franchise_address.email,
-                "phone": franchise.franchise_address.phone,
-                "address": franchise.franchise_address.address,
-                "pincode": franchise.franchise_address.pincode,
-                "preferred_service_area": franchise.franchise_address.preferred_service_area,
-                "nearby_landmark": franchise.franchise_address.nearby_landmark,
-            })
-
-
     items_data = []
-
     for item in order.items:
         items_data.append({
             "id": item.id,
@@ -1459,9 +1473,7 @@ async def track_order_by_barcode(
             "qty": item.qty,
             "total": float(item.total),
         })
-
     packages_data = []
-
     for package in order.packages:
         packages_data.append({
             "id": package.id,
@@ -1472,11 +1484,8 @@ async def track_order_by_barcode(
             "vol_weight_kg": float(package.vol_weight_kg),
             "physical_weight_kg": float(package.physical_weight_kg),
         })
-
-
     return {
         "success": True,
-
         "order": {
             "order_id": order.id,
             "order_number": order.order_number,
@@ -1492,16 +1501,95 @@ async def track_order_by_barcode(
             "total_boxes": order.total_boxes,
             "created_at": order.created_at,
         },
-
         "pickup_address": pickup_data,
-
         "warehouse_addresses": warehouse_data,
-
         "franchise_addresses": franchise_data,
-
         "consignee": consignee_data,
-
         "items": items_data,
-
         "packages": packages_data,
     }
+
+
+
+
+    
+
+
+
+
+
+
+
+
+
+@router.delete("/delete-scanned-order_with_mistak/{id}/{orderid}")
+async def delete_scanned_order(
+    id: str,
+    orderid:str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),):
+    
+    deleted_from = None
+    order_id = None
+    warehouse_result = await db.execute(select(WarehouseToDelivery).where(WarehouseToDelivery.warehouse_addresses_id == id,WarehouseToDelivery.order_id==orderid))
+    warehouse_entry = warehouse_result.scalar_one_or_none()
+    if warehouse_entry:
+        order_result = await db.execute(select(Order).where(Order.id == warehouse_entry.order_id))
+        order = order_result.scalar_one_or_none()
+        if order:
+           
+            order.status = order.previous_status
+            order.previous_status=OrderStatus.PROCESSING.value
+            order.updated_at = datetime.now(IST)
+        order_id = warehouse_entry.order_id
+        await db.delete(warehouse_entry)
+        deleted_from = "WarehouseToDelivery"
+    if not deleted_from:
+        franchise_result = await db.execute(select(FranchiseToDelivery).where(FranchiseToDelivery.franchise_addresses_id == id,FranchiseToDelivery.order_id==orderid))
+        franchise_entry = franchise_result.scalar_one_or_none()
+        if franchise_entry:
+            order_result = await db.execute(select(Order).where(Order.id == franchise_entry.order_id))
+            order = order_result.scalar_one_or_none()
+            if order:
+                order.status = order.previous_status
+                order.previous_status=OrderStatus.DISPATCHED.value
+                order.updated_at = datetime.now(IST)
+            order_id = franchise_entry.order_id
+            await db.delete(franchise_entry)
+            deleted_from = "FranchiseToDelivery"
+    if not deleted_from:
+        pickup_result = await db.execute(select(PickupToConsignees).where(PickupToConsignees.pickup_addresses_id == id,ConsigneeToDelivery.order_id==orderid))
+        pickup_entry = pickup_result.scalar_one_or_none()
+        if pickup_entry:
+            order_result = await db.execute(
+                select(Order).where(Order.id == pickup_entry.order_id))
+            order = order_result.scalar_one_or_none()
+            if order:
+                order.status = order.previous_status
+                order.previous_status=OrderStatus.PICKED.value
+                order.updated_at = datetime.now(IST)
+            order_id = pickup_entry.order_id
+            await db.delete(pickup_entry)
+            deleted_from = "PickupToConsignees"
+    if not deleted_from:
+        consignee_result = await db.execute(select(ConsigneeToDelivery).where(ConsigneeToDelivery.consignee_id == id,ConsigneeToDelivery.order_id==orderid))
+        consignee_entry = consignee_result.scalar_one_or_none()
+        if consignee_entry:
+            order_result = await db.execute(select(Order).where(Order.id == consignee_entry.order_id))
+            order = order_result.scalar_one_or_none()
+            if order:
+                order.status = order.previous_status
+                order.previous_status=OrderStatus.PROCESSING.value
+                order.updated_at = datetime.now(IST)
+            order_id = consignee_entry.order_id
+            await db.delete(consignee_entry)
+            deleted_from = "ConsigneeToDelivery"
+    if not deleted_from:
+        raise HTTPException(status_code=404,detail="No scanned data found with this ID")
+    await db.commit()
+    return {
+        "success": True,
+        "deleted_from": deleted_from,
+        "deleted_id": id,
+        "order_id": order_id,
+    }    

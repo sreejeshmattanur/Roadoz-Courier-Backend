@@ -481,6 +481,7 @@ async def create_order(
         gst_number=data.gst_number,
         eway_bill_number=data.eway_bill_number,
         status=OrderStatus.PROCESSING,
+        previous_status=OrderStatus.PROCESSING,
         created_by=current_user.id,
         franchise_id=franchise_id,
     )
