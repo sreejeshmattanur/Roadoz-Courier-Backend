@@ -1779,33 +1779,78 @@ async def delete_order(
 
 
 
+# async def get_order_counts(
+#     db: AsyncSession,
+#     current_user: User
+# ):
+#     franchise_id = await _resolve_franchise_id(db, current_user)
+
+#     base_query = select(Order)
+
+#     if franchise_id:
+#         base_query = base_query.where(Order.franchise_id == franchise_id)
+
+#     total_orders = await db.scalar(
+#         select(func.count(Order.id)).where(
+#             Order.franchise_id == franchise_id
+#         )
+#     )
+
+#     status_counts_query = (
+#         select(
+#             Order.status,
+#             func.count(Order.id)
+#         )
+#         .where(Order.franchise_id == franchise_id)
+#         .group_by(Order.status)
+#     )
+
+#     result = await db.execute(status_counts_query)
+#     rows = result.all()
+
+#     status_counts = {
+#         status.value: 0 for status in OrderStatus
+#     }
+
+#     for status, count in rows:
+#         status_counts[status] = count
+
+#     return {
+#         "total_orders": total_orders or 0,
+#         "status_counts": status_counts
+#     }
+
+
+
 async def get_order_counts(
     db: AsyncSession,
     current_user: User
 ):
     franchise_id = await _resolve_franchise_id(db, current_user)
 
-    base_query = select(Order)
+    total_query = select(func.count(Order.id))
 
-    if franchise_id:
-        base_query = base_query.where(Order.franchise_id == franchise_id)
-
-    total_orders = await db.scalar(
-        select(func.count(Order.id)).where(
-            Order.franchise_id == franchise_id
-        )
-    )
-
-    status_counts_query = (
+    status_query = (
         select(
             Order.status,
             func.count(Order.id)
         )
-        .where(Order.franchise_id == franchise_id)
         .group_by(Order.status)
     )
 
-    result = await db.execute(status_counts_query)
+    # Apply filter only for franchise users
+    if franchise_id:
+        total_query = total_query.where(
+            Order.franchise_id == franchise_id
+        )
+
+        status_query = status_query.where(
+            Order.franchise_id == franchise_id
+        )
+
+    total_orders = await db.scalar(total_query)
+
+    result = await db.execute(status_query)
     rows = result.all()
 
     status_counts = {
@@ -1813,7 +1858,7 @@ async def get_order_counts(
     }
 
     for status, count in rows:
-        status_counts[status] = count
+        status_counts[status.value] = count
 
     return {
         "total_orders": total_orders or 0,
