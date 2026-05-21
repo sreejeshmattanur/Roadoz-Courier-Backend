@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends,HTTPException,status,Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from sqlalchemy import select, and_, or_, func
 from app.schemas.warehouse import WarehouseCreate, WarehouseResponse,WarehouseAddressUpdate,WarehouseAddressResponse
 from app.services.warehouse_service import create_warehouse, get_all_warehouses
 from app.models.user import User
@@ -11,7 +12,8 @@ from app.dependencies.role_checker import get_current_user
 from app.models.warehouse import WareHouseAddress
 from sqlalchemy import select,and_
 from datetime import datetime,time
-
+from typing import Optional
+from datetime import date
 router = APIRouter(prefix="/warehouse", tags=["Warehouse"])
 
 
@@ -24,12 +26,95 @@ async def create_warehouse_route(
     return await create_warehouse(db, data, current_user.id)
 
 
-@router.get("/getall/", response_model=list[WarehouseResponse])
+# @router.get("/getall/", response_model=list[WarehouseResponse])
+# async def list_warehouses(
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     return await get_all_warehouses(db)
+
+
+
+@router.get("/getall/")
 async def list_warehouses(
+    search: Optional[str] = Query(None,description="Search by nickname / contact name / phone / pincode"),
+    nickname: Optional[str] = Query(None,description="Filter by warehouse nickname"),
+    pincode: Optional[str] = Query(None,description="Filter by warehouse pincode"),
+    start_date: Optional[date] = Query(None,description="Start date"),
+    end_date: Optional[date] = Query(None,description="End date"),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    return await get_all_warehouses(db)
+    current_user: User = Depends(get_current_user)):
+    offset = (page - 1) * limit
+    filters = []
+    filters.append(WareHouseAddress.user_id == current_user.id)
+
+    if search:
+        filters.append(
+            or_(
+                WareHouseAddress.nickname.ilike(f"%{search}%"),
+                WareHouseAddress.contact_name.ilike(f"%{search}%"),
+                WareHouseAddress.phone.ilike(f"%{search}%"),
+                WareHouseAddress.pincode.ilike(f"%{search}%"),
+                WareHouseAddress.city.ilike(f"%{search}%"),
+                WareHouseAddress.state.ilike(f"%{search}%"),))
+    if nickname:
+        filters.append(WareHouseAddress.nickname.ilike(f"%{nickname}%"))
+    if pincode:
+        filters.append(WareHouseAddress.pincode.ilike(f"%{pincode}%"))
+    if start_date:
+        filters.append(func.date(WareHouseAddress.created_at) >= start_date)
+
+    if end_date:
+        filters.append(func.date(WareHouseAddress.created_at) <= end_date)
+    stmt = (select(WareHouseAddress).where(and_(*filters)).order_by(WareHouseAddress.created_at.desc()).offset(offset).limit(limit))
+    result = await db.execute(stmt)
+    warehouses = result.scalars().all()
+    count_stmt = (select(func.count()).select_from(WareHouseAddress).where(and_(*filters)))
+    total_result = await db.execute(count_stmt)
+    total = total_result.scalar() or 0
+    total_pages = (total + limit - 1) // limit
+    if not warehouses:
+        raise HTTPException(status_code=404,detail="No warehouses found")
+    return {
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1,
+        },
+        "filters": {
+            "search": search,
+            "nickname": nickname,
+            "pincode": pincode,
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+        "data": [
+            {
+                "id": warehouse.id,
+                "nickname": warehouse.nickname,
+                "contact_name": warehouse.contact_name,
+                "phone": warehouse.phone,
+                "email": warehouse.email,
+                "address_line_1": warehouse.address_line_1,
+                "address_line_2": warehouse.address_line_2,
+                "pincode": warehouse.pincode,
+                "city": warehouse.city,
+                "state": warehouse.state,
+                "country": warehouse.country,
+                "created_at": warehouse.created_at,
+                "updated_at": warehouse.updated_at,
+            }
+
+            for warehouse in warehouses
+        ]
+    }
+
+
 
 
 
