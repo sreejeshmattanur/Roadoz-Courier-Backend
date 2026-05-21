@@ -333,7 +333,9 @@ class BulkOrderResponse(BaseModel):
 
 
 class TodayStatusRequest(BaseModel):
-     date: date                 
+    date: date   
+    exact_status: Optional[str] = None
+    search: Optional[str] = None             
 
 
 

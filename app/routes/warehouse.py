@@ -90,15 +90,9 @@ async def delete_warehouse_address(
     warehouse_address = result.scalar_one_or_none()
     if not warehouse_address:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Warehouse address not found")
-    if warehouse_address.user_id != str(current_user.id):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,detail="You are not authorized to delete this warehouse address")
-
     await db.delete(warehouse_address)
     await db.commit()
-    return {
-        "success": True,
-        "message": "Warehouse address deleted successfully"
-    }
+    return {"success": True,"message": "Warehouse address deleted successfully"}
     
     
     

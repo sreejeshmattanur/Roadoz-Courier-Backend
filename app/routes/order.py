@@ -86,6 +86,16 @@ from app.models.webconfiguration import WebConfiguration
 
 from app.dependencies.consigeeuser import get_current_user as get_current_consigee
 from app.models.franchise import OrderFranchiseAddress,Franchise
+from app.models.consignee import Consignee
+from app.models.pickup_address import PickupAddress
+from app.models.franchise import Franchise
+from app.models.warehouse import WareHouseAddress
+
+from sqlalchemy import and_, or_, func, select
+from sqlalchemy.orm import selectinload, aliased
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
 
 
 
@@ -1037,64 +1047,483 @@ class FilterableStatus(str, Enum):
 
 
 
+# @router.post("/orders/today-sta")
+# async def get_today_status_orders(
+#     payload: TodayStatusRequest,
+#     status: FilterableStatus = Query(...,description="Dispatched | Picked | Cancelled | Delivered"),
+#     page: int = Query(1, ge=1),
+#     limit: int = Query(10, ge=1, le=100),
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     _: User = Depends(require_permission("orders:view")),
+# ):
+#     role_result = await db.execute(
+#         select(Role.name)
+#         .join(UserRole, UserRole.role_id == Role.id)
+#         .where(UserRole.user_id == current_user.id)
+#     )
+
+#     role_name = role_result.scalar_one_or_none()
+#     today = payload.date
+#     offset = (page - 1) * limit
+#     base_filter = [
+#         Order.status == status.value,
+#         func.date(Order.updated_at) == today,
+#     ]
+#     # Franchise and Staff -> only own orders
+#     if role_name != "super_admin":
+#         base_filter.append(
+#             Order.created_by == current_user.id
+#         )
+#     count_stmt = (
+#         select(func.count())
+#         .select_from(Order)
+#         .where(*base_filter)
+#     )
+
+#     total_result = await db.execute(count_stmt)
+#     total = total_result.scalar()
+#     stmt = (
+#         select(Order)
+#         .where(*base_filter)
+#         .order_by(Order.updated_at.desc())
+#         .offset(offset)
+#         .limit(limit)
+#     )
+#     result = await db.execute(stmt)
+
+#     orders = result.scalars().unique().all()
+
+#     if not orders:
+#         raise HTTPException(
+#             status_code=404,
+#             detail=f"No orders with status '{status.value}' found for {today}"
+#         )
+
+#     total_pages = (total + limit - 1) // limit
+
+#     return {
+#         "date": str(today),
+#         "status": status.value,
+
+#         "pagination": {
+#             "page": page,
+#             "limit": limit,
+#             "total": total,
+#             "total_pages": total_pages,
+#             "has_next": page < total_pages,
+#             "has_prev": page > 1,
+#         },
+
+#         "orders": [
+#             {
+#                 "id": o.id,
+#                 "order_number": o.order_number,
+#                 "order_type": o.order_type,
+#                 "created_by": o.created_by,
+#                 "status": o.status,
+#                 "payment_method": o.payment_method,
+#                 "cod_amount": float(o.cod_amount) if o.cod_amount else None,
+#                 "order_value": float(o.order_value),
+#                 "total_weight_kg": float(o.total_weight_kg),
+#                 "applicable_weight_kg": float(o.applicable_weight_kg),
+#                 "shipping_charge": float(o.shipping_charge),
+#                 "total_boxes": o.total_boxes,
+#                 "created_at": o.created_at,
+#                 "updated_at": o.updated_at,
+
+#                 "items": [
+#                     {
+#                         "product_name": item.product_name,
+#                         "sku": item.sku,
+#                         "unit_price": float(item.unit_price),
+#                         "qty": item.qty,
+#                         "total": float(item.total),
+#                     }
+#                     for item in o.items
+#                 ],
+
+#                 "packages": [
+#                     {
+#                         "count": pkg.count,
+#                         "length_cm": float(pkg.length_cm),
+#                         "breadth_cm": float(pkg.breadth_cm),
+#                         "height_cm": float(pkg.height_cm),
+#                         "physical_weight_kg": float(pkg.physical_weight_kg),
+#                         "vol_weight_kg": float(pkg.vol_weight_kg),
+#                     }
+#                     for pkg in o.packages
+#                 ],
+
+#                 "pickup_address": {
+#                     "id": o.pickup_address.id,
+#                 } if o.pickup_address else None,
+
+#                 "consignee": {
+#                     "id": o.consignee.id,
+#                     "name": o.consignee.name,
+#                 } if o.consignee else None,
+#             }
+#             for o in orders
+#         ]
+#     }
+
+
+
+
+
 @router.post("/orders/today-status")
 async def get_today_status_orders(
     payload: TodayStatusRequest,
-    status: FilterableStatus = Query(...,description="Dispatched | Picked | Cancelled | Delivered"),
+    status: str = Query(...,description="Delivered | Picked | Dispatched | Warehouse | Processing"),
+    route_status: Optional[str] = Query(None,description="Dispatched_1 | Dispatched_2 | Warehouse_1 | Warehouse_2"),
+    search: Optional[str] = Query(None,description="Search by pincode / consignee / pickup / warehouse / franchise / order number"),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
+
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
 ):
-    role_result = await db.execute(
+
+    allowed_status = [
+        "Delivered",
+        "Picked",
+        "Dispatched",
+        "Warehouse",
+        "Processing"
+    ]
+
+    if status not in allowed_status:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Allowed status: {allowed_status}"
+        )
+
+
+    role_stmt = (
         select(Role.name)
         .join(UserRole, UserRole.role_id == Role.id)
         .where(UserRole.user_id == current_user.id)
     )
 
-    role_name = role_result.scalar_one_or_none()
-    today = payload.date
-    offset = (page - 1) * limit
-    base_filter = [
-        Order.status == status.value,
-        func.date(Order.updated_at) == today,
-    ]
-    # Franchise and Staff -> only own orders
-    if role_name != "super_admin":
-        base_filter.append(
-            Order.created_by == current_user.id
-        )
-    count_stmt = (
-        select(func.count())
-        .select_from(Order)
-        .where(*base_filter)
-    )
+    role_result = await db.execute(role_stmt)
 
-    total_result = await db.execute(count_stmt)
-    total = total_result.scalar()
+    role_name = role_result.scalar_one_or_none()
+
+    # =========================================================
+    # PAGINATION
+    # =========================================================
+
+    offset = (page - 1) * limit
+
+    # =========================================================
+    # ALIAS
+    # =========================================================
+
+    warehouse_alias = aliased(WareHouseAddress)
+    franchise_alias = aliased(Franchise)
+
+    # =========================================================
+    # BASE QUERY
+    # =========================================================
+
     stmt = (
         select(Order)
-        .where(*base_filter)
+        .options(
+            selectinload(Order.items),
+
+            selectinload(Order.packages),
+
+            selectinload(Order.consignee),
+
+            selectinload(Order.pickup_address),
+
+            selectinload(Order.warehouse_addresses)
+            .selectinload(OrderWarehouseAddress.warehouse_address),
+
+            selectinload(Order.franchise_addresses)
+            .selectinload(OrderFranchiseAddress.franchise_address),
+        )
+
+        .join(
+            Consignee,
+            Order.consignee_id == Consignee.id
+        )
+
+        .join(
+            PickupAddress,
+            Order.pickup_address_id == PickupAddress.id
+        )
+
+        .outerjoin(
+            OrderWarehouseAddress,
+            OrderWarehouseAddress.order_id == Order.id
+        )
+
+        .outerjoin(
+            warehouse_alias,
+            warehouse_alias.id == OrderWarehouseAddress.warehouse_address_id
+        )
+
+        .outerjoin(
+            OrderFranchiseAddress,
+            OrderFranchiseAddress.order_id == Order.id
+        )
+
+        .outerjoin(
+            franchise_alias,
+            franchise_alias.id == OrderFranchiseAddress.franchise_address_id
+        )
+
+        # =====================================================
+        # STATUS TABLES
+        # =====================================================
+
+        .outerjoin(
+            ConsigneeToDelivery,
+            ConsigneeToDelivery.order_id == Order.id
+        )
+
+        .outerjoin(
+            PickupToConsignees,
+            PickupToConsignees.order_id == Order.id
+        )
+
+        .outerjoin(
+            WarehouseToDelivery,
+            WarehouseToDelivery.order_id == Order.id
+        )
+
+        .outerjoin(
+            FranchiseToDelivery,
+            FranchiseToDelivery.order_id == Order.id
+        )
+    )
+
+    # =========================================================
+    # FILTERS
+    # =========================================================
+
+    filters = []
+
+    # =========================================================
+    # DATE FILTER
+    # =========================================================
+
+    filters.append(
+        func.date(Order.updated_at) == payload.date
+    )
+
+    # =========================================================
+    # MAIN STATUS FILTER
+    # =========================================================
+
+    if status == "Dispatched":
+
+        filters.append(
+            or_(
+                Order.status == "Dispatched",
+                Order.status.ilike("Dispatched_%")
+            )
+        )
+
+    elif status == "Warehouse":
+
+        filters.append(
+            or_(
+                Order.status == "Warehouse",
+                Order.status.ilike("Warehouse_%")
+            )
+        )
+
+    else:
+
+        filters.append(
+            Order.status == status
+        )
+
+    # =========================================================
+    # ROUTE STATUS FILTER
+    # =========================================================
+    #
+    # ONLY CHECKS INSIDE THESE TABLES:
+    #
+    # WarehouseToDelivery
+    # FranchiseToDelivery
+    # PickupToConsignees
+    # ConsigneeToDelivery
+    #
+    # =========================================================
+
+    if route_status:
+
+        filters.append(
+            or_(
+
+                WarehouseToDelivery.status == route_status,
+
+                FranchiseToDelivery.status == route_status,
+
+                PickupToConsignees.status == route_status,
+
+                ConsigneeToDelivery.status == route_status,
+            )
+        )
+
+    # =========================================================
+    # SEARCH FILTER
+    # =========================================================
+
+    if search:
+
+        filters.append(
+            or_(
+
+                # ORDER
+                Order.order_number.ilike(f"%{search}%"),
+                Order.status.ilike(f"%{search}%"),
+
+                # CONSIGNEE
+                Consignee.name.ilike(f"%{search}%"),
+                Consignee.mobile.ilike(f"%{search}%"),
+                Consignee.pincode.ilike(f"%{search}%"),
+
+                # PICKUP
+                PickupAddress.contact_name.ilike(f"%{search}%"),
+                PickupAddress.nickname.ilike(f"%{search}%"),
+                PickupAddress.phone.ilike(f"%{search}%"),
+                PickupAddress.pincode.ilike(f"%{search}%"),
+
+                # WAREHOUSE
+                warehouse_alias.nickname.ilike(f"%{search}%"),
+                warehouse_alias.contact_name.ilike(f"%{search}%"),
+                warehouse_alias.phone.ilike(f"%{search}%"),
+                warehouse_alias.pincode.ilike(f"%{search}%"),
+
+                # FRANCHISE
+                franchise_alias.name.ilike(f"%{search}%"),
+                franchise_alias.phone.ilike(f"%{search}%"),
+                franchise_alias.pincode.ilike(f"%{search}%"),
+            )
+        )
+
+    # =========================================================
+    # ROLE FILTER
+    # =========================================================
+
+    if role_name != "super_admin":
+
+        filters.append(
+            Order.created_by == current_user.id
+        )
+
+    # =========================================================
+    # FINAL QUERY
+    # =========================================================
+
+    stmt = (
+        stmt
+        .where(and_(*filters))
         .order_by(Order.updated_at.desc())
         .offset(offset)
         .limit(limit)
     )
+
     result = await db.execute(stmt)
 
     orders = result.scalars().unique().all()
 
+    # =========================================================
+    # COUNT QUERY
+    # =========================================================
+
+    count_stmt = (
+        select(func.count(func.distinct(Order.id)))
+
+        .select_from(Order)
+
+        .join(
+            Consignee,
+            Order.consignee_id == Consignee.id
+        )
+
+        .join(
+            PickupAddress,
+            Order.pickup_address_id == PickupAddress.id
+        )
+
+        .outerjoin(
+            OrderWarehouseAddress,
+            OrderWarehouseAddress.order_id == Order.id
+        )
+
+        .outerjoin(
+            warehouse_alias,
+            warehouse_alias.id == OrderWarehouseAddress.warehouse_address_id
+        )
+
+        .outerjoin(
+            OrderFranchiseAddress,
+            OrderFranchiseAddress.order_id == Order.id
+        )
+
+        .outerjoin(
+            franchise_alias,
+            franchise_alias.id == OrderFranchiseAddress.franchise_address_id
+        )
+
+        .outerjoin(
+            ConsigneeToDelivery,
+            ConsigneeToDelivery.order_id == Order.id
+        )
+
+        .outerjoin(
+            PickupToConsignees,
+            PickupToConsignees.order_id == Order.id
+        )
+
+        .outerjoin(
+            WarehouseToDelivery,
+            WarehouseToDelivery.order_id == Order.id
+        )
+
+        .outerjoin(
+            FranchiseToDelivery,
+            FranchiseToDelivery.order_id == Order.id
+        )
+
+        .where(and_(*filters))
+    )
+
+    total_result = await db.execute(count_stmt)
+
+    total = total_result.scalar() or 0
+
+    # =========================================================
+    # NO DATA
+    # =========================================================
+
     if not orders:
         raise HTTPException(
             status_code=404,
-            detail=f"No orders with status '{status.value}' found for {today}"
+            detail="No orders found"
         )
 
     total_pages = (total + limit - 1) // limit
 
+    # =========================================================
+    # RESPONSE
+    # =========================================================
+
     return {
-        "date": str(today),
-        "status": status.value,
+        "date": str(payload.date),
+
+        "main_status": status,
+
+        "route_status": route_status,
+
+        "search": search,
 
         "pagination": {
             "page": page,
@@ -1106,57 +1535,138 @@ async def get_today_status_orders(
         },
 
         "orders": [
+
             {
-                "id": o.id,
-                "order_number": o.order_number,
-                "order_type": o.order_type,
-                "created_by": o.created_by,
-                "status": o.status,
-                "payment_method": o.payment_method,
-                "cod_amount": float(o.cod_amount) if o.cod_amount else None,
-                "order_value": float(o.order_value),
-                "total_weight_kg": float(o.total_weight_kg),
-                "applicable_weight_kg": float(o.applicable_weight_kg),
-                "shipping_charge": float(o.shipping_charge),
-                "total_boxes": o.total_boxes,
-                "created_at": o.created_at,
-                "updated_at": o.updated_at,
+                "id": order.id,
+
+                "order_number": order.order_number,
+
+                "status": order.status,
+
+                "previous_status": order.previous_status,
+
+                "order_type": order.order_type,
+
+                "payment_method": order.payment_method,
+
+                "order_value": float(order.order_value),
+
+                "shipping_charge": float(order.shipping_charge),
+
+                "total_weight_kg": float(order.total_weight_kg),
+
+                "total_boxes": order.total_boxes,
+
+                "created_at": order.created_at,
+
+                "updated_at": order.updated_at,
+
+                # =================================================
+                # CONSIGNEE
+                # =================================================
+
+                "consignee": {
+                    "name": order.consignee.name if order.consignee else None,
+                    "mobile": order.consignee.mobile if order.consignee else None,
+                    "pincode": order.consignee.pincode if order.consignee else None,
+                    "city": order.consignee.city if order.consignee else None,
+                    "state": order.consignee.state if order.consignee else None,
+                },
+
+                # =================================================
+                # PICKUP
+                # =================================================
+
+                "pickup": {
+                    "name": order.pickup_address.contact_name if order.pickup_address else None,
+                    "nickname": order.pickup_address.nickname if order.pickup_address else None,
+                    "phone": order.pickup_address.phone if order.pickup_address else None,
+                    "pincode": order.pickup_address.pincode if order.pickup_address else None,
+                    "city": order.pickup_address.city if order.pickup_address else None,
+                    "state": order.pickup_address.state if order.pickup_address else None,
+                },
+
+                # =================================================
+                # WAREHOUSES
+                # =================================================
+
+                "warehouses": [
+
+                    {
+                        "id": wh.warehouse_address.id,
+                        "name": wh.warehouse_address.nickname,
+                        "contact_name": wh.warehouse_address.contact_name,
+                        "phone": wh.warehouse_address.phone,
+                        "pincode": wh.warehouse_address.pincode,
+                        "city": wh.warehouse_address.city,
+                        "state": wh.warehouse_address.state,
+                    }
+
+                    for wh in order.warehouse_addresses
+                    if wh.warehouse_address
+                ],
+
+                # =================================================
+                # FRANCHISES
+                # =================================================
+
+                "franchises": [
+
+                    {
+                        "id": fr.franchise_address.id,
+                        "name": fr.franchise_address.name,
+                        "phone": fr.franchise_address.phone,
+                        "pincode": fr.franchise_address.pincode,
+                    }
+
+                    for fr in order.franchise_addresses
+                    if fr.franchise_address
+                ],
+
+                # =================================================
+                # ITEMS
+                # =================================================
 
                 "items": [
+
                     {
                         "product_name": item.product_name,
                         "sku": item.sku,
-                        "unit_price": float(item.unit_price),
                         "qty": item.qty,
+                        "unit_price": float(item.unit_price),
                         "total": float(item.total),
                     }
-                    for item in o.items
+
+                    for item in order.items
                 ],
 
+                # =================================================
+                # PACKAGES
+                # =================================================
+
                 "packages": [
+
                     {
                         "count": pkg.count,
                         "length_cm": float(pkg.length_cm),
                         "breadth_cm": float(pkg.breadth_cm),
                         "height_cm": float(pkg.height_cm),
                         "physical_weight_kg": float(pkg.physical_weight_kg),
-                        "vol_weight_kg": float(pkg.vol_weight_kg),
                     }
-                    for pkg in o.packages
+
+                    for pkg in order.packages
                 ],
-
-                "pickup_address": {
-                    "id": o.pickup_address.id,
-                } if o.pickup_address else None,
-
-                "consignee": {
-                    "id": o.consignee.id,
-                    "name": o.consignee.name,
-                } if o.consignee else None,
             }
-            for o in orders
+
+            for order in orders
         ]
     }
+
+
+
+
+
+
 
 
 
