@@ -33,45 +33,58 @@ async def create_warehouse_route(
 # ):
 #     return await get_all_warehouses(db)
 
-
-
 @router.get("/getall/")
 async def list_warehouses(
-    name: Optional[str] = Query(None,description="Search by nickname / contact name / phone / pincode"),
-    nickname: Optional[str] = Query(None,description="Filter by warehouse nickname"),
-    pincode: Optional[str] = Query(None,description="Filter by warehouse pincode"),
-    start_date: Optional[date] = Query(None,description="Start date"),
-    end_date: Optional[date] = Query(None,description="End date"),
+
+    # SEARCH
+    search: Optional[str] = Query(
+        None,
+        description="Search by nickname / contact name / phone / pincode"),
+    start_date: Optional[date] = Query(
+        None,
+        description="Start date"
+    ),
+    end_date: Optional[date] = Query(
+        None,
+        description="End date"
+    ),
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)):
+    current_user: User = Depends(get_current_user)
+):
     offset = (page - 1) * limit
     filters = []
-    filters.append(WareHouseAddress.user_id == current_user.id)
-
-    if name:
+    if search:
         filters.append(
-            or_(
-                WareHouseAddress.nickname.ilike(f"%{name}%"),
-                WareHouseAddress.contact_name.ilike(f"%{name}%"),
-                WareHouseAddress.phone.ilike(f"%{name}%"),
-                WareHouseAddress.pincode.ilike(f"%{name}%"),
-                WareHouseAddress.city.ilike(f"%{name}%"),
-                WareHouseAddress.state.ilike(f"%{name}%"),))
-    if nickname:
-        filters.append(WareHouseAddress.nickname.ilike(f"%{nickname}%"))
-    if pincode:
-        filters.append(WareHouseAddress.pincode.ilike(f"%{pincode}%"))
-    if start_date:
-        filters.append(func.date(WareHouseAddress.created_at) >= start_date)
 
+            or_(
+                WareHouseAddress.nickname.ilike(f"%{search}%"),
+                WareHouseAddress.contact_name.ilike(f"%{search}%"),
+                WareHouseAddress.phone.ilike(f"%{search}%"),
+                WareHouseAddress.pincode.ilike(f"%{search}%"),
+                WareHouseAddress.city.ilike(f"%{search}%"),
+                WareHouseAddress.state.ilike(f"%{search}%"),
+            )
+        )
+    if start_date:
+        filters.append(
+            func.date(WareHouseAddress.created_at) >= start_date)
     if end_date:
         filters.append(func.date(WareHouseAddress.created_at) <= end_date)
-    stmt = (select(WareHouseAddress).where(and_(*filters)).order_by(WareHouseAddress.created_at.desc()).offset(offset).limit(limit))
+    stmt = (
+        select(WareHouseAddress)
+        .where(and_(*filters))
+        .order_by(WareHouseAddress.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     warehouses = result.scalars().all()
-    count_stmt = (select(func.count()).select_from(WareHouseAddress).where(and_(*filters)))
+    count_stmt = (
+        select(func.count())
+        .select_from(WareHouseAddress)
+        .where(and_(*filters)))
     total_result = await db.execute(count_stmt)
     total = total_result.scalar() or 0
     total_pages = (total + limit - 1) // limit
@@ -87,15 +100,16 @@ async def list_warehouses(
             "has_prev": page > 1,
         },
         "filters": {
-            "name": name,
-            "nickname": nickname,
-            "pincode": pincode,
+            "search": search,
             "start_date": start_date,
             "end_date": end_date,
         },
+
         "data": [
             {
                 "id": warehouse.id,
+                "user_id": warehouse.user_id,
+                "franchise_id": warehouse.franchise_id,
                 "nickname": warehouse.nickname,
                 "contact_name": warehouse.contact_name,
                 "phone": warehouse.phone,
@@ -109,11 +123,9 @@ async def list_warehouses(
                 "created_at": warehouse.created_at,
                 "updated_at": warehouse.updated_at,
             }
-
             for warehouse in warehouses
         ]
     }
-
 
 
 
