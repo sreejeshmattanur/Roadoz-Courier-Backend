@@ -14,7 +14,7 @@ from app.models.consignee import Consignee
 from app.models.operations import Expense, CashVoucher, StaffAttendance
 from app.models.remittance import Remittance
 from app.schemas.analytics import DashboardAnalyticsResponse
-
+from math import ceil
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 async def _get_franchise_for_user(db: AsyncSession, user_id: str) -> str | None:
@@ -31,6 +31,8 @@ async def _resolve_franchise_id(db: AsyncSession, user: User) -> str | None:
 async def get_dashboard_analytics(
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
+    pagef: int = Query(1, ge=1),
+    limitf: int = Query(10, ge=1, le=10),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")) # Using orders:view as generic dashboard access
@@ -190,7 +192,58 @@ async def get_dashboard_analytics(
         extra_counts["total_users"] = float(total_users)
         extra_counts["total_franchises"] = float(total_franchises)
         extra_counts["total_wallet_balance"] = float(total_wallet_balance)
+        
+        
+    # franchise order count    
+    offset = (pagef - 1) * limitf   
+    total_query = select(func.count(Franchise.id))
+    total_result = await db.execute(total_query)
+    total = total_result.scalar() or 0
 
+    # main query with pagination
+    franchise_orders_query = (
+        select(
+            Franchise.id,
+            Franchise.name,
+            Franchise.franchise_code,
+            Franchise.email,
+            Franchise.phone,
+            func.count(Order.id).label("order_count")
+        )
+        .outerjoin(Order, Order.franchise_id == Franchise.id)
+        .group_by(
+            Franchise.id,
+            Franchise.name,
+            Franchise.franchise_code,
+            Franchise.email,
+            Franchise.phone
+        )
+        .order_by(func.count(Order.id).desc())
+        .offset(offset)
+        .limit(limitf)
+    )
+
+    franchise_orders_result = await db.execute(franchise_orders_query)
+
+    franchise_orders_data = []
+
+    for row in franchise_orders_result.all():
+        franchise_orders_data.append({
+            "franchise_name": row.name,
+            "order_count": row.order_count,
+        })
+
+    response = {
+        "pagination": {
+            "page": pagef,
+            "limit": limitf,
+            "total": total,
+            "total_pages": ceil(total / limitf) if total else 1,
+            "has_next": pagef * limitf < total,
+            "has_prev": pagef > 1
+        },
+        "franchise_orders_data": franchise_orders_data
+    }       
     return DashboardAnalyticsResponse(
         total_orders=total_orders,
         rto_orders=rto_orders,
@@ -207,5 +260,7 @@ async def get_dashboard_analytics(
         staff_attendance_present_count=staff_attendance_present_count,
         remittance_pending_sum=remittance_pending_sum,
         remittance_remitted_sum=remittance_remitted_sum,
+        franchise_orders_data=response  if response else None ,
         extra_counts=extra_counts if extra_counts else None
+        
     )

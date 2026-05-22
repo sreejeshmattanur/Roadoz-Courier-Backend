@@ -3,7 +3,10 @@ import uuid
 import logging
 import csv
 from datetime import datetime
+from fastapi import Depends
 
+from app.core.database import get_db
+from app.dependencies.role_checker import get_current_user, require_permission
 from fastapi import HTTPException, status
 from sqlalchemy import select, func, or_, delete, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -246,22 +249,21 @@ def _build_order_out(order: Order) -> OrderOut:
 
 # ── Pickup Address ─────────────────────────────────────────────────────────
 
-
 async def search_pickup_addresses(
-    db: AsyncSession, current_user: User, search: str | None = None
-) -> PickupAddressListResponse:
+    db: AsyncSession,
+    current_user: User,
+    search: str | None = None,
+    page: int = 1,
+    limit: int = 10,) -> PickupAddressListResponse:
     franchise_id = await _resolve_franchise_id(db, current_user)
-
     query = select(PickupAddress)
     count_query = select(func.count()).select_from(PickupAddress)
-
     if franchise_id:
         query = query.where(PickupAddress.franchise_id == franchise_id)
         count_query = count_query.where(PickupAddress.franchise_id == franchise_id)
     else:
         query = query.where(PickupAddress.user_id == current_user.id)
         count_query = count_query.where(PickupAddress.user_id == current_user.id)
-
     if search:
         search_filter = or_(
             PickupAddress.nickname.ilike(f"%{search}%"),
@@ -272,15 +274,17 @@ async def search_pickup_addresses(
         )
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
-
     total = (await db.execute(count_query)).scalar_one()
-    result = await db.execute(query.order_by(PickupAddress.created_at.desc()).limit(50))
+    offset = (page - 1) * limit
+    result = await db.execute(query.order_by(PickupAddress.created_at.desc()).offset(offset).limit(limit))
     addresses = result.scalars().all()
-
     return PickupAddressListResponse(
         items=[PickupAddressOut.model_validate(a) for a in addresses],
-        total=total,
-    )
+        total=total,page=page,limit=limit,total_pages=(total + limit - 1) // limit,)
+
+
+
+
 
 
 async def create_pickup_address(
@@ -1779,87 +1783,26 @@ async def delete_order(
 
 
 
-# async def get_order_counts(
-#     db: AsyncSession,
-#     current_user: User
-# ):
-#     franchise_id = await _resolve_franchise_id(db, current_user)
-
-#     base_query = select(Order)
-
-#     if franchise_id:
-#         base_query = base_query.where(Order.franchise_id == franchise_id)
-
-#     total_orders = await db.scalar(
-#         select(func.count(Order.id)).where(
-#             Order.franchise_id == franchise_id
-#         )
-#     )
-
-#     status_counts_query = (
-#         select(
-#             Order.status,
-#             func.count(Order.id)
-#         )
-#         .where(Order.franchise_id == franchise_id)
-#         .group_by(Order.status)
-#     )
-
-#     result = await db.execute(status_counts_query)
-#     rows = result.all()
-
-#     status_counts = {
-#         status.value: 0 for status in OrderStatus
-#     }
-
-#     for status, count in rows:
-#         status_counts[status] = count
-
-#     return {
-#         "total_orders": total_orders or 0,
-#         "status_counts": status_counts
-#     }
-
-
 
 async def get_order_counts(
-    db: AsyncSession,
-    current_user: User
-):
-    franchise_id = await _resolve_franchise_id(db, current_user)
-
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),):
     total_query = select(func.count(Order.id))
-
-    status_query = (
-        select(
-            Order.status,
-            func.count(Order.id)
-        )
-        .group_by(Order.status)
-    )
-
-    # Apply filter only for franchise users
-    if franchise_id:
-        total_query = total_query.where(
-            Order.franchise_id == franchise_id
-        )
-
-        status_query = status_query.where(
-            Order.franchise_id == franchise_id
-        )
-
+    status_query = (select(Order.status,func.count(Order.id)).group_by(Order.status))
+    if current_user.role_name != "super_admin":
+        franchise_id = await _resolve_franchise_id(db,current_user)
+        if franchise_id:
+            total_query = total_query.where(Order.franchise_id == franchise_id)
+            status_query = status_query.where(Order.franchise_id == franchise_id)
     total_orders = await db.scalar(total_query)
-
     result = await db.execute(status_query)
     rows = result.all()
-
     status_counts = {
         status.value: 0 for status in OrderStatus
     }
-
     for status, count in rows:
-        status_counts[status.value] = count
-
+        key = status.value if hasattr(status, "value") else status
+        status_counts[key] = count
     return {
         "total_orders": total_orders or 0,
         "status_counts": status_counts
