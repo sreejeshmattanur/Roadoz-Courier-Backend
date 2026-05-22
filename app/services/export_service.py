@@ -164,8 +164,20 @@ def export_to_csv(report_data: dict) -> bytes:
     writer.writerow([title.upper()])
     if "date" in report_data:
         writer.writerow([f"Date: {report_data['date']}"])
+    elif "date_from" in report_data and "date_to" in report_data:
+        writer.writerow([f"Date Range: {report_data['date_from']} to {report_data['date_to']}"])
     if "year" in report_data:
         writer.writerow([f"Year: {report_data['year']}"])
+        
+    # Opening Balances
+    openings = {k: v for k, v in report_data.items() if k.startswith("opening_")}
+    for k, v in openings.items():
+        label = k.replace("_", " ").title()
+        if isinstance(v, float):
+            writer.writerow([f"{label}: {v:,.2f}"])
+        else:
+            writer.writerow([f"{label}: {v}"])
+            
     writer.writerow([])
     
     # Headers
@@ -174,6 +186,23 @@ def export_to_csv(report_data: dict) -> bytes:
     # Data Rows
     for item in items:
         writer.writerow([item.get(k, "") for k in keys])
+        
+    # Totals Row
+    totals = report_data.get("totals", {})
+    if totals:
+        totals_row = []
+        for idx, key in enumerate(keys):
+            if idx == 0:
+                totals_row.append("Total")
+            elif key in totals:
+                val = totals[key]
+                if isinstance(val, (int, float)):
+                    totals_row.append(f"{val:,.2f}")
+                else:
+                    totals_row.append(str(val))
+            else:
+                totals_row.append("")
+        writer.writerow(totals_row)
         
     return output.getvalue().encode("utf-8")
 
@@ -211,8 +240,21 @@ def export_to_excel(report_data: dict) -> bytes:
     if "date" in report_data:
         ws.cell(row=meta_row, column=2, value=f"Report Date: {report_data['date']}").font = font_meta
         meta_row += 1
+    elif "date_from" in report_data and "date_to" in report_data:
+        ws.cell(row=meta_row, column=2, value=f"Report Period: {report_data['date_from']} to {report_data['date_to']}").font = font_meta
+        meta_row += 1
     if "year" in report_data:
         ws.cell(row=meta_row, column=2, value=f"Year: {report_data['year']}").font = font_meta
+        meta_row += 1
+        
+    # Opening Balances
+    openings = {k: v for k, v in report_data.items() if k.startswith("opening_")}
+    for k, v in openings.items():
+        label = k.replace("_", " ").title()
+        if isinstance(v, float):
+            ws.cell(row=meta_row, column=2, value=f"{label}: {v:,.2f}").font = font_meta
+        else:
+            ws.cell(row=meta_row, column=2, value=f"{label}: {v}").font = font_meta
         meta_row += 1
         
     start_row = meta_row + 1
@@ -251,6 +293,36 @@ def export_to_excel(report_data: dict) -> bytes:
             # Zebra pattern
             if idx % 2 == 1:
                 cell.fill = fill_zebra
+                
+        current_row += 1
+        
+    # Totals Row
+    totals = report_data.get("totals", {})
+    if totals:
+        font_total = Font(name="Calibri", size=11, bold=True, color="1F4E79")
+        border_top_thin = Side(border_style="thin", color="1F4E79")
+        border_bottom_double = Side(border_style="double", color="1F4E79")
+        border_total = Border(left=border_thin, right=border_thin, top=border_top_thin, bottom=border_bottom_double)
+        
+        for col_idx, key in enumerate(keys, start=2):
+            cell = ws.cell(row=current_row, column=col_idx)
+            cell.font = font_total
+            cell.border = border_total
+            
+            if col_idx == 2:
+                cell.value = "Total"
+                cell.alignment = Alignment(horizontal="left")
+            elif key in totals:
+                val = totals[key]
+                cell.value = val
+                if isinstance(val, (int, float)):
+                    cell.alignment = Alignment(horizontal="right")
+                    if "percent" in key or "growth" in key:
+                        cell.number_format = "0.00'%'"
+                    else:
+                        cell.number_format = "#,##0.00"
+            else:
+                cell.value = ""
                 
         current_row += 1
         
@@ -364,8 +436,23 @@ def export_to_pdf(report_data: dict) -> bytes:
     meta_desc = f"Generated on {datetime.now().strftime('%d-%m-%Y %H:%M')}"
     if "date" in report_data:
         meta_desc += f"  |  Report Period: {report_data['date']}"
+    elif "date_from" in report_data and "date_to" in report_data:
+        meta_desc += f"  |  Report Period: {report_data['date_from']} to {report_data['date_to']}"
     if "year" in report_data:
         meta_desc += f"  |  Year: {report_data['year']}"
+        
+    # Opening Balances in metadata
+    openings = {k: v for k, v in report_data.items() if k.startswith("opening_")}
+    if openings:
+        opening_parts = []
+        for k, v in openings.items():
+            label = k.replace("_", " ").title()
+            if isinstance(v, float):
+                opening_parts.append(f"{label}: {v:,.2f}")
+            else:
+                opening_parts.append(f"{label}: {v}")
+        meta_desc += "<br/>" + "  |  ".join(opening_parts)
+        
     story.append(Paragraph(meta_desc, subtitle_style))
     
     headers, keys = _resolve_config(title, items)
@@ -391,6 +478,32 @@ def export_to_pdf(report_data: dict) -> bytes:
             row.append(Paragraph(val_str, td_style))
         table_data.append(row)
         
+    # Totals Row
+    totals = report_data.get("totals", {})
+    if totals:
+        tot_row = []
+        t_total_style = ParagraphStyle(
+            "TableTotal",
+            fontName="Helvetica-Bold",
+            fontSize=8.5,
+            textColor=colors.HexColor("#1F4E79")
+        )
+        for idx, key in enumerate(keys):
+            if idx == 0:
+                tot_row.append(Paragraph("Total", t_total_style))
+            elif key in totals:
+                val = totals[key]
+                if isinstance(val, float) or "amount" in key or "revenue" in key or "charge" in key or "payable" in key or "balance" in key or "expenses" in key or "profit" in key or "gst" in key or "collection" in key or "deposit" in key:
+                    val_str = f"{float(val or 0):,.2f}"
+                elif "growth" in key or "percent" in key:
+                    val_str = f"{float(val or 0):.2f}%"
+                else:
+                    val_str = str(val)
+                tot_row.append(Paragraph(val_str, t_total_style))
+            else:
+                tot_row.append(Paragraph("", t_total_style))
+        table_data.append(tot_row)
+        
     # Beautiful Table Styling
     col_width = 523 / len(headers)
     t = Table(table_data, colWidths=[col_width] * len(headers))
@@ -406,10 +519,19 @@ def export_to_pdf(report_data: dict) -> bytes:
     ])
     
     # Add Zebra striping
-    for i in range(1, len(table_data)):
+    # Exclude totals row if it exists
+    data_rows_count = len(table_data) - 1 if totals else len(table_data)
+    for i in range(1, data_rows_count):
         if i % 2 == 0:
             t_style.add('BACKGROUND', (0, i), (-1, i), colors.HexColor("#F8FAFC"))
             
+    # Add totals row styles
+    if totals:
+        total_row_idx = len(table_data) - 1
+        t_style.add('LINEABOVE', (0, total_row_idx), (-1, total_row_idx), 1, colors.HexColor("#1F4E79"))
+        t_style.add('LINEBELOW', (0, total_row_idx), (-1, total_row_idx), 1.5, colors.HexColor("#1F4E79"))
+        t_style.add('BACKGROUND', (0, total_row_idx), (-1, total_row_idx), colors.HexColor("#F1F5F9"))
+        
     t.setStyle(t_style)
     story.append(t)
     

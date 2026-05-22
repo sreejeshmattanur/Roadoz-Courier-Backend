@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends
+from datetime import date, datetime
+from typing import Optional
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 
 from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission
@@ -9,6 +11,8 @@ from app.models.order import Order, OrderStatus
 from app.models.wallet import WalletTransaction, Wallet
 from app.models.franchise import Franchise
 from app.models.consignee import Consignee
+from app.models.operations import Expense, CashVoucher, StaffAttendance
+from app.models.remittance import Remittance
 from app.schemas.analytics import DashboardAnalyticsResponse
 
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
@@ -25,20 +29,35 @@ async def _resolve_franchise_id(db: AsyncSession, user: User) -> str | None:
 
 @router.get("/dashboard", response_model=DashboardAnalyticsResponse)
 async def get_dashboard_analytics(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")) # Using orders:view as generic dashboard access
 ):
     franchise_id = await _resolve_franchise_id(db, current_user)
     
-    # 1. Base conditions
-    order_conditions = [Order.franchise_id == franchise_id] if franchise_id else []
+    # Convert dates to datetime bounds for datetime fields
+    start_dt = datetime.combine(date_from, datetime.min.time()) if date_from else None
+    end_dt = datetime.combine(date_to, datetime.max.time()) if date_to else None
     
-    # Wallet base query
-    wallet_txn_query = select(func.count(WalletTransaction.id))
+    # 1. Base conditions for Orders and Wallet Transactions
+    order_conditions = []
+    if franchise_id:
+        order_conditions.append(Order.franchise_id == franchise_id)
+    if start_dt:
+        order_conditions.append(Order.created_at >= start_dt)
+    if end_dt:
+        order_conditions.append(Order.created_at <= end_dt)
+        
+    wallet_conditions = []
     if franchise_id:
         wallet_id_subq = select(Wallet.id).where(Wallet.franchise_id == franchise_id).scalar_subquery()
-        wallet_txn_query = wallet_txn_query.where(WalletTransaction.wallet_id == wallet_id_subq)
+        wallet_conditions.append(WalletTransaction.wallet_id == wallet_id_subq)
+    if start_dt:
+        wallet_conditions.append(WalletTransaction.created_at >= start_dt)
+    if end_dt:
+        wallet_conditions.append(WalletTransaction.created_at <= end_dt)
 
     # 2. Total Orders
     total_orders_query = select(func.count(Order.id)).where(*order_conditions)
@@ -46,8 +65,10 @@ async def get_dashboard_analytics(
 
     # 3. RTO Orders
     rto_query = select(func.count(Order.id)).where(
-        Order.status.in_([OrderStatus.RTO_IN_TRANSIT, OrderStatus.RTO_DELIVERED]),
-        *order_conditions
+        and_(
+            Order.status.in_([OrderStatus.RTO_IN_TRANSIT, OrderStatus.RTO_DELIVERED]),
+            *order_conditions
+        )
     )
     rto_orders = (await db.execute(rto_query)).scalar_one() or 0
 
@@ -56,6 +77,7 @@ async def get_dashboard_analytics(
     total_revenue_or_spend = float((await db.execute(revenue_query)).scalar_one_or_none() or 0.0)
 
     # 5. Wallet Transactions Count
+    wallet_txn_query = select(func.count(WalletTransaction.id)).where(*wallet_conditions)
     wallet_transactions_count = (await db.execute(wallet_txn_query)).scalar_one() or 0
 
     # 6. COD vs Prepaid
@@ -72,7 +94,9 @@ async def get_dashboard_analytics(
         order_statuses[status_key] = row[1]
 
     # 8. Delivered vs RTO
-    delivered_query = select(func.count(Order.id)).where(Order.status == OrderStatus.DELIVERED, *order_conditions)
+    delivered_query = select(func.count(Order.id)).where(
+        and_(Order.status == OrderStatus.DELIVERED, *order_conditions)
+    )
     delivered_count = (await db.execute(delivered_query)).scalar_one() or 0
     delivered_vs_rto = {
         "Delivered": delivered_count,
@@ -82,11 +106,81 @@ async def get_dashboard_analytics(
     # 9. Statewise Orders
     statewise_orders = {}
     state_q = select(Consignee.state, func.count(Order.id)).join(Consignee, Order.consignee_id == Consignee.id).where(*order_conditions).group_by(Consignee.state)
-    
     for row in (await db.execute(state_q)).all():
         statewise_orders[str(row[0])] = row[1]
 
-    # 10. Extra Counts (Admin only counts)
+    # 10. Operations and Financial Analytics conditions
+    expense_conditions = []
+    if franchise_id:
+        expense_conditions.append(Expense.franchise_id == franchise_id)
+    if date_from:
+        expense_conditions.append(Expense.expense_date >= date_from)
+    if date_to:
+        expense_conditions.append(Expense.expense_date <= date_to)
+
+    voucher_conditions = []
+    if franchise_id:
+        voucher_conditions.append(CashVoucher.franchise_id == franchise_id)
+    if date_from:
+        voucher_conditions.append(CashVoucher.voucher_date >= date_from)
+    if date_to:
+        voucher_conditions.append(CashVoucher.voucher_date <= date_to)
+
+    attendance_conditions = []
+    if franchise_id:
+        attendance_conditions.append(StaffAttendance.franchise_id == franchise_id)
+    if date_from:
+        attendance_conditions.append(StaffAttendance.attendance_date >= date_from)
+    if date_to:
+        attendance_conditions.append(StaffAttendance.attendance_date <= date_to)
+
+    remittance_conditions = []
+    if franchise_id:
+        remittance_conditions.append(Remittance.franchise_id == franchise_id)
+    if start_dt:
+        remittance_conditions.append(Remittance.created_at >= start_dt)
+    if end_dt:
+        remittance_conditions.append(Remittance.created_at <= end_dt)
+
+    # Sum Expenses
+    expense_q = select(func.coalesce(func.sum(Expense.amount), 0.0)).where(*expense_conditions)
+    total_expenses = float((await db.execute(expense_q)).scalar_one() or 0.0)
+
+    # Cash Vouchers Count
+    vouchers_q = select(func.count(CashVoucher.id)).where(*voucher_conditions)
+    total_vouchers = (await db.execute(vouchers_q)).scalar_one() or 0
+
+    # Voucher Debits (payments outflow)
+    debit_q = select(func.coalesce(func.sum(CashVoucher.amount), 0.0)).where(
+        and_(CashVoucher.type == "payment", *voucher_conditions)
+    )
+    voucher_debit_sum = float((await db.execute(debit_q)).scalar_one() or 0.0)
+
+    # Voucher Credits (receipts inflow)
+    credit_q = select(func.coalesce(func.sum(CashVoucher.amount), 0.0)).where(
+        and_(CashVoucher.type == "receipt", *voucher_conditions)
+    )
+    voucher_credit_sum = float((await db.execute(credit_q)).scalar_one() or 0.0)
+
+    # Attendance Present Count
+    attendance_q = select(func.count(StaffAttendance.id)).where(
+        and_(StaffAttendance.status == "present", *attendance_conditions)
+    )
+    staff_attendance_present_count = (await db.execute(attendance_q)).scalar_one() or 0
+
+    # Remittances pending
+    remit_pending_q = select(func.coalesce(func.sum(Remittance.total_amount), 0.0)).where(
+        and_(Remittance.status == "pending", *remittance_conditions)
+    )
+    remittance_pending_sum = float((await db.execute(remit_pending_q)).scalar_one() or 0.0)
+
+    # Remittances complete
+    remit_remitted_q = select(func.coalesce(func.sum(Remittance.total_amount), 0.0)).where(
+        and_(Remittance.status == "remitted", *remittance_conditions)
+    )
+    remittance_remitted_sum = float((await db.execute(remit_remitted_q)).scalar_one() or 0.0)
+
+    # 11. Extra Counts (Admin only counts)
     extra_counts = {}
     if not franchise_id:
         total_users = (await db.execute(select(func.count(User.id)))).scalar_one() or 0
@@ -106,5 +200,12 @@ async def get_dashboard_analytics(
         order_statuses=order_statuses,
         delivered_vs_rto=delivered_vs_rto,
         statewise_orders=statewise_orders,
+        total_expenses=total_expenses,
+        total_vouchers=total_vouchers,
+        voucher_debit_sum=voucher_debit_sum,
+        voucher_credit_sum=voucher_credit_sum,
+        staff_attendance_present_count=staff_attendance_present_count,
+        remittance_pending_sum=remittance_pending_sum,
+        remittance_remitted_sum=remittance_remitted_sum,
         extra_counts=extra_counts if extra_counts else None
     )

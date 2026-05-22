@@ -12,4 +12,13 @@ class DashboardAnalyticsResponse(BaseModel):
     delivered_vs_rto: Dict[str, int]
     statewise_orders: Dict[str, int]
     
+    # Financial and Operations Analytics
+    total_expenses: Optional[float] = 0.0
+    total_vouchers: Optional[int] = 0
+    voucher_debit_sum: Optional[float] = 0.0
+    voucher_credit_sum: Optional[float] = 0.0
+    staff_attendance_present_count: Optional[int] = 0
+    remittance_pending_sum: Optional[float] = 0.0
+    remittance_remitted_sum: Optional[float] = 0.0
+    
     extra_counts: Optional[Dict[str, float]] = None  # E.g. {"total_users": 10, "total_franchises": 2, "total_wallet_balance": 1500.0}

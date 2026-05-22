@@ -78,13 +78,15 @@ def format_report_response(report_data: dict, format: str):
 @router.get("/bookings/daily")
 async def daily_booking_report_endpoint(
     report_date: date | None = Query(None),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
 ):
-    data = await daily_booking_report(db, current_user, report_date, franchise_id)
+    data = await daily_booking_report(db, current_user, report_date, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
@@ -134,13 +136,15 @@ async def delivery_status_report_endpoint(
 
 @router.get("/delivery/pending")
 async def pending_delivery_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
 ):
-    data = await pending_delivery_report(db, current_user, franchise_id)
+    data = await pending_delivery_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
@@ -217,13 +221,15 @@ async def collection_summary_report_endpoint(
 
 @router.get("/collections/outstanding")
 async def outstanding_collection_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("invoices:view")),
 ):
-    data = await outstanding_collection_report(db, current_user, franchise_id)
+    data = await outstanding_collection_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
@@ -243,37 +249,43 @@ async def daily_collection_report_endpoint(
 
 @router.get("/cod/pending")
 async def cod_pending_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("remittances:view")),
 ):
-    data = await cod_pending_report(db, current_user, franchise_id)
+    data = await cod_pending_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
 @router.get("/cod/settlement")
 async def cod_settlement_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("remittances:view")),
 ):
-    data = await cod_settlement_report(db, current_user, franchise_id)
+    data = await cod_settlement_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
 @router.get("/cod/commission")
 async def cod_commission_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("remittances:view")),
 ):
-    data = await cod_commission_report(db, current_user, franchise_id)
+    data = await cod_commission_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
@@ -382,37 +394,43 @@ async def franchise_settlement_report_endpoint(
 
 @router.get("/franchise/outstanding")
 async def franchise_outstanding_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("invoices:view")),
 ):
-    data = await franchise_outstanding_report(db, current_user, franchise_id)
+    data = await franchise_outstanding_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
 @router.get("/franchise/collection")
 async def franchise_collection_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("invoices:view")),
 ):
-    data = await franchise_collection_report(db, current_user, franchise_id)
+    data = await franchise_collection_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
 @router.get("/franchise/profitability")
 async def franchise_profitability_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("invoices:view")),
 ):
-    data = await franchise_profitability_report(db, current_user, franchise_id)
+    data = await franchise_profitability_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
@@ -462,23 +480,27 @@ async def delivery_efficiency_report_endpoint(
 
 @router.get("/mis/area-wise-business")
 async def area_wise_business_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
 ):
-    data = await area_wise_business_report(db, current_user, franchise_id)
+    data = await area_wise_business_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
 
 
 @router.get("/mis/performance-dashboard")
 async def performance_dashboard_report_endpoint(
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
     format: str = Query("json"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
 ):
-    data = await performance_dashboard_report(db, current_user, franchise_id)
+    data = await performance_dashboard_report(db, current_user, date_from, date_to, franchise_id)
     return format_report_response(data, format)
