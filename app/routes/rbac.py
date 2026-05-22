@@ -2,7 +2,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from datetime import date
 from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission
 from app.models.user import User
@@ -57,23 +57,72 @@ async def create_user_endpoint(
     return await create_user(db, data, current_user)
 
 
-@router.get("/users", response_model=UserListResponse)
+
+
+
+
+
+
+
+
+# @router.get("/users", response_model=UserListResponse)
+# async def list_users_endpoint(
+#     page: int = Query(1, ge=1),
+#     start_date: Optional[date] = Query(None,description="Start date"),
+#     end_date: Optional[date] = Query(None,description="End date"),
+#     limit: int = Query(10, ge=1, le=100),
+#     search: Optional[str] = Query(None, description="Search by name, email, phone, or employee code"),
+#     franchise_id: Optional[str] = Query(None, description="Filter by franchise ID (super_admin only)"),
+#     role: Optional[str] = Query(None, description="Filter by role name"),
+#     assigned_by: Optional[str] = Query(None, description="Filter by who assigned the role (user ID)"),
+#     assigned_by_me: Optional[bool] = Query(None, description="Show only users whose role was assigned by me"),
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     _: User = Depends(require_permission("users:view")),
+# ):
+#     effective_assigned_by = assigned_by
+#     if assigned_by_me:
+#         effective_assigned_by = current_user.id
+#     return await list_users(db, current_user, page=page, limit=limit, search=search, franchise_id=franchise_id, role=role, assigned_by=effective_assigned_by)
+
+@router.get("/users",response_model=UserListResponse)
 async def list_users_endpoint(
     page: int = Query(1, ge=1),
+    start_date: Optional[date] = Query(None,description="Start date"),
+    end_date: Optional[date] = Query(None,description="End date"),
     limit: int = Query(10, ge=1, le=100),
-    search: Optional[str] = Query(None, description="Search by name, email, phone, or employee code"),
-    franchise_id: Optional[str] = Query(None, description="Filter by franchise ID (super_admin only)"),
-    role: Optional[str] = Query(None, description="Filter by role name"),
-    assigned_by: Optional[str] = Query(None, description="Filter by who assigned the role (user ID)"),
-    assigned_by_me: Optional[bool] = Query(None, description="Show only users whose role was assigned by me"),
+    search: Optional[str] = Query(None,description="Search by name, email, phone, or employee code"),
+    franchise_id: Optional[str] = Query(None,description="Filter by franchise ID (super_admin only)"),
+    role: Optional[str] = Query(None,description="Filter by role name"),
+    assigned_by: Optional[str] = Query(None,description="Filter by who assigned the role (user ID)"),
+    assigned_by_me: Optional[bool] = Query(None,description="Show only users whose role was assigned by me"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("users:view")),
-):
+    _: User = Depends(require_permission("users:view")),):
     effective_assigned_by = assigned_by
     if assigned_by_me:
         effective_assigned_by = current_user.id
-    return await list_users(db, current_user, page=page, limit=limit, search=search, franchise_id=franchise_id, role=role, assigned_by=effective_assigned_by)
+    return await list_users(
+        db=db,
+        current_user=current_user,
+        page=page,
+        limit=limit,
+        search=search,
+        franchise_id=franchise_id,
+        role=role,
+        assigned_by=effective_assigned_by,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+
+
+
+
+
+
+
 
 
 @router.put("/users/{user_id}", response_model=UserOut)

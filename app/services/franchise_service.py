@@ -14,7 +14,7 @@ from app.core.security import get_password_hash
 from app.utils.redis import cache_set, cache_get, cache_delete
 import uuid
 
-
+from datetime import datetime, date, time
 async def _generate_franchise_code(db: AsyncSession, location: str) -> str:
     year = datetime.utcnow().year
     loc_code = (location or "")[:3].upper().ljust(3, "X")
@@ -131,46 +131,178 @@ async def create_franchise(db: AsyncSession, data: FranchiseCreate) -> Franchise
     return FranchiseResponse.model_validate(franchise)
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
 async def get_franchises(
     db: AsyncSession,
     page: int = 1,
     limit: int = 10,
     search: str = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> FranchiseListResponse:
-    cache_key = f"franchise_list:{page}:{limit}:{search or ''}"
+
+    cache_key = (
+        f"franchise_list:{page}:{limit}:{search or ''}:"
+        f"{start_date or ''}:{end_date or ''}"
+    )
+
     cached = await cache_get(cache_key)
+
     if cached:
         data = json.loads(cached)
         return FranchiseListResponse(**data)
 
-    query = select(Franchise).order_by(Franchise.created_at.desc(), Franchise.id.desc())
+    query = (
+        select(Franchise)
+        .order_by(
+            Franchise.created_at.desc(),
+            Franchise.id.desc()
+        )
+    )
+
     count_query = select(func.count()).select_from(Franchise)
 
     if search:
+
         filter_expr = or_(
             Franchise.name.ilike(f"%{search}%"),
             Franchise.email.ilike(f"%{search}%"),
             Franchise.phone.ilike(f"%{search}%"),
             Franchise.franchise_code.ilike(f"%{search}%"),
         )
+
         query = query.where(filter_expr)
         count_query = count_query.where(filter_expr)
 
-    total = (await db.execute(count_query)).scalar_one()
+    # START DATE FILTER
+    if start_date:
+
+        start_datetime = datetime.combine(
+            start_date,
+            time.min
+        )
+
+        query = query.where(
+            Franchise.created_at >= start_datetime
+        )
+
+        count_query = count_query.where(
+            Franchise.created_at >= start_datetime
+        )
+
+    # END DATE FILTER
+    if end_date:
+
+        end_datetime = datetime.combine(
+            end_date,
+            time.max
+        )
+
+        query = query.where(
+            Franchise.created_at <= end_datetime
+        )
+
+        count_query = count_query.where(
+            Franchise.created_at <= end_datetime
+        )
+
+    total = (
+        await db.execute(count_query)
+    ).scalar_one()
+
     offset = (page - 1) * limit
-    result = await db.execute(query.offset(offset).limit(limit))
+
+    result = await db.execute(
+        query.offset(offset).limit(limit)
+    )
+
     franchises = result.scalars().all()
 
     response = FranchiseListResponse(
-        items=[FranchiseResponse.model_validate(f) for f in franchises],
+        items=[
+            FranchiseResponse.model_validate(f)
+            for f in franchises
+        ],
         total=total,
         page=page,
         limit=limit,
-        pages=math.ceil(total / limit) if total > 0 else 0,
+        pages=math.ceil(total / limit)
+        if total > 0 else 0,
     )
 
-    await cache_set(cache_key, response.model_dump_json(), expire=120)
+    await cache_set(
+        cache_key,
+        response.model_dump_json(),
+        expire=120
+    )
+
     return response
+
+
+# async def get_franchises(
+#     db: AsyncSession,
+#     page: int = 1,
+#     limit: int = 10,
+#     search: str = None,
+# ) -> FranchiseListResponse:
+#     cache_key = f"franchise_list:{page}:{limit}:{search or ''}"
+#     cached = await cache_get(cache_key)
+#     if cached:
+#         data = json.loads(cached)
+#         return FranchiseListResponse(**data)
+
+#     query = select(Franchise).order_by(Franchise.created_at.desc(), Franchise.id.desc())
+#     count_query = select(func.count()).select_from(Franchise)
+
+#     if search:
+#         filter_expr = or_(
+#             Franchise.name.ilike(f"%{search}%"),
+#             Franchise.email.ilike(f"%{search}%"),
+#             Franchise.phone.ilike(f"%{search}%"),
+#             Franchise.franchise_code.ilike(f"%{search}%"),
+#         )
+#         query = query.where(filter_expr)
+#         count_query = count_query.where(filter_expr)
+
+#     total = (await db.execute(count_query)).scalar_one()
+#     offset = (page - 1) * limit
+#     result = await db.execute(query.offset(offset).limit(limit))
+#     franchises = result.scalars().all()
+
+#     response = FranchiseListResponse(
+#         items=[FranchiseResponse.model_validate(f) for f in franchises],
+#         total=total,
+#         page=page,
+#         limit=limit,
+#         pages=math.ceil(total / limit) if total > 0 else 0,
+#     )
+
+#     await cache_set(cache_key, response.model_dump_json(), expire=120)
+#     return response
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 async def get_franchise_by_id(db: AsyncSession, franchise_id: str) -> FranchiseResponse:

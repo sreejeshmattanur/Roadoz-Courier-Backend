@@ -10,6 +10,7 @@ from app.services.franchise_service import (
     update_franchise,
     delete_franchise,
 )
+from datetime import datetime, date, time
 from app.dependencies.role_checker import get_current_user, require_permission
 from app.models.user import User
 
@@ -27,22 +28,89 @@ async def create(
     return await create_franchise(db, data)
 
 
-@router.get("", response_model=FranchiseListResponse)
+# @router.get("", response_model=FranchiseListResponse)
+# async def list_franchises(
+#     page: int = Query(1, ge=1, description="Page number"),
+#     limit: int = Query(10, ge=1, le=100, description="Items per page"),
+#     search: Optional[str] = Query(None, description="Search by name, email, phone, or code"),
+#     db: AsyncSession = Depends(get_db),
+#     _: User = Depends(get_current_user),
+#     __: User = Depends(require_permission("franchises:view")),
+# ):
+#     """
+#     List all franchises with pagination and search.
+
+#     - Search works across: name, email, phone, franchise_code
+#     - Example: `/api/v1/franchise?search=kochi&page=1&limit=10`
+#     """
+#     return await get_franchises(db, page=page, limit=limit, search=search)
+
+
+@router.get(
+    "",
+    response_model=FranchiseListResponse
+)
 async def list_franchises(
-    page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(10, ge=1, le=100, description="Items per page"),
-    search: Optional[str] = Query(None, description="Search by name, email, phone, or code"),
+
+    page: int = Query(
+        1,
+        ge=1,
+        description="Page number"
+    ),
+
+    limit: int = Query(
+        10,
+        ge=1,
+        le=100,
+        description="Items per page"
+    ),
+
+    start_date: Optional[date] = Query(
+        None,
+        description="Start date"
+    ),
+
+    end_date: Optional[date] = Query(
+        None,
+        description="End date"
+    ),
+
+    search: Optional[str] = Query(
+        None,
+        description="Search by name, email, phone, or code"
+    ),
+
     db: AsyncSession = Depends(get_db),
+
     _: User = Depends(get_current_user),
-    __: User = Depends(require_permission("franchises:view")),
+
+    __: User = Depends(
+        require_permission("franchises:view")
+    ),
 ):
     """
     List all franchises with pagination and search.
 
     - Search works across: name, email, phone, franchise_code
-    - Example: `/api/v1/franchise?search=kochi&page=1&limit=10`
+    - Example:
+      `/api/v1/franchise?search=kochi&page=1&limit=10`
     """
-    return await get_franchises(db, page=page, limit=limit, search=search)
+
+    return await get_franchises(
+        db=db,
+        page=page,
+        limit=limit,
+        search=search,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+
+
+
+
+
 
 
 @router.get("/{franchise_id}", response_model=FranchiseResponse)

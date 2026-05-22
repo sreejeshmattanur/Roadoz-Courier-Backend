@@ -1,11 +1,11 @@
 import math
 import uuid
 import logging
-
+from datetime import date
 from fastapi import HTTPException, status
 from sqlalchemy import select, func, delete, or_
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from datetime import datetime,time
 from app.core.security import get_password_hash
 from app.models.user import User
 from app.models.franchise import Franchise
@@ -147,6 +147,16 @@ async def create_user(
     return await _build_user_out(db, user)
 
 
+
+
+
+
+
+
+
+
+
+
 async def list_users(
     db: AsyncSession,
     current_user: User,
@@ -156,78 +166,309 @@ async def list_users(
     franchise_id: str | None = None,
     role: str | None = None,
     assigned_by: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> UserListResponse:
-    caller_role = await _get_caller_role_name(db, current_user.id)
+
+    caller_role = await _get_caller_role_name(
+        db,
+        current_user.id
+    )
 
     base_filter = []
 
     if caller_role == "super_admin":
-        # Super admin can optionally filter by franchise_id
-        if franchise_id is not None:
-            if franchise_id == "none":
-                base_filter.append(User.franchise_id.is_(None))
-            else:
-                base_filter.append(User.franchise_id == franchise_id)
-    elif caller_role == "franchise":
-        franchise = await _get_franchise_for_owner(db, current_user.id)
-        if not franchise:
-            return UserListResponse(items=[], total=0, page=page, limit=limit, pages=0)
-        base_filter.append(User.franchise_id == franchise.id)
-    else:
-        # Employee or other role — scope to own franchise
-        if current_user.franchise_id:
-            base_filter.append(User.franchise_id == current_user.franchise_id)
-        else:
-            # No franchise association — only see themselves
-            base_filter.append(User.id == current_user.id)
 
-    query = select(User).order_by(User.created_at.desc(), User.id.desc())
+        if franchise_id is not None:
+
+            if franchise_id == "none":
+                base_filter.append(
+                    User.franchise_id.is_(None)
+                )
+
+            else:
+                base_filter.append(
+                    User.franchise_id == franchise_id
+                )
+
+    elif caller_role == "franchise":
+
+        franchise = await _get_franchise_for_owner(
+            db,
+            current_user.id
+        )
+
+        if not franchise:
+            return UserListResponse(
+                items=[],
+                total=0,
+                page=page,
+                limit=limit,
+                pages=0,
+            )
+
+        base_filter.append(
+            User.franchise_id == franchise.id
+        )
+
+    else:
+
+        if current_user.franchise_id:
+
+            base_filter.append(
+                User.franchise_id == current_user.franchise_id
+            )
+
+        else:
+
+            base_filter.append(
+                User.id == current_user.id
+            )
+
+    query = (
+        select(User)
+        .order_by(
+            User.created_at.desc(),
+            User.id.desc()
+        )
+    )
+
     count_query = select(func.count()).select_from(User)
 
-    # Filter by role — INNER JOIN (only users who have that role)
     if role:
-        query = query.join(UserRole, UserRole.user_id == User.id)
-        count_query = count_query.join(UserRole, UserRole.user_id == User.id)
-        query = query.join(Role, Role.id == UserRole.role_id).where(Role.name == role)
-        count_query = count_query.join(Role, Role.id == UserRole.role_id).where(Role.name == role)
+
+        query = query.join(
+            UserRole,
+            UserRole.user_id == User.id
+        )
+
+        count_query = count_query.join(
+            UserRole,
+            UserRole.user_id == User.id
+        )
+
+        query = query.join(
+            Role,
+            Role.id == UserRole.role_id
+        ).where(
+            Role.name == role
+        )
+
+        count_query = count_query.join(
+            Role,
+            Role.id == UserRole.role_id
+        ).where(
+            Role.name == role
+        )
+
         if assigned_by:
-            query = query.where(UserRole.assigned_by == assigned_by)
-            count_query = count_query.where(UserRole.assigned_by == assigned_by)
+
+            query = query.where(
+                UserRole.assigned_by == assigned_by
+            )
+
+            count_query = count_query.where(
+                UserRole.assigned_by == assigned_by
+            )
+
     elif assigned_by:
-        # OUTER JOIN so users without roles still appear
-        query = query.outerjoin(UserRole, UserRole.user_id == User.id)
-        count_query = count_query.outerjoin(UserRole, UserRole.user_id == User.id)
-        query = query.where(UserRole.assigned_by == assigned_by)
-        count_query = count_query.where(UserRole.assigned_by == assigned_by)
+
+        query = query.outerjoin(
+            UserRole,
+            UserRole.user_id == User.id
+        )
+
+        count_query = count_query.outerjoin(
+            UserRole,
+            UserRole.user_id == User.id
+        )
+
+        query = query.where(
+            UserRole.assigned_by == assigned_by
+        )
+
+        count_query = count_query.where(
+            UserRole.assigned_by == assigned_by
+        )
 
     for f in base_filter:
+
         query = query.where(f)
         count_query = count_query.where(f)
 
     if search:
+
         search_filter = or_(
             User.name.ilike(f"%{search}%"),
             User.email.ilike(f"%{search}%"),
             User.phone.ilike(f"%{search}%"),
             User.employee_code.ilike(f"%{search}%"),
         )
+
         query = query.where(search_filter)
         count_query = count_query.where(search_filter)
 
-    total = (await db.execute(count_query)).scalar_one()
+    # START DATE FILTER
+    if start_date:
+
+        start_datetime = datetime.combine(
+            start_date,
+            time.min
+        )
+
+        query = query.where(
+            User.created_at >= start_datetime
+        )
+
+        count_query = count_query.where(
+            User.created_at >= start_datetime
+        )
+
+    # END DATE FILTER
+    if end_date:
+
+        end_datetime = datetime.combine(
+            end_date,
+            time.max
+        )
+
+        query = query.where(
+            User.created_at <= end_datetime
+        )
+
+        count_query = count_query.where(
+            User.created_at <= end_datetime
+        )
+
+    total = (
+        await db.execute(count_query)
+    ).scalar_one()
+
     offset = (page - 1) * limit
-    result = await db.execute(query.offset(offset).limit(limit))
+
+    result = await db.execute(
+        query.offset(offset).limit(limit)
+    )
+
     users = result.scalars().all()
 
-    items = [await _build_user_out(db, u) for u in users]
+    items = [
+        await _build_user_out(db, u)
+        for u in users
+    ]
 
     return UserListResponse(
         items=items,
         total=total,
         page=page,
         limit=limit,
-        pages=math.ceil(total / limit) if total > 0 else 0,
+        pages=math.ceil(total / limit)
+        if total > 0 else 0,
     )
+
+
+
+
+
+
+
+
+# async def list_users(
+#     db: AsyncSession,
+#     current_user: User,
+#     page: int = 1,
+#     limit: int = 10,
+#     search: str | None = None,
+#     franchise_id: str | None = None,
+#     role: str | None = None,
+#     assigned_by: str | None = None,
+# ) -> UserListResponse:
+#     caller_role = await _get_caller_role_name(db, current_user.id)
+
+#     base_filter = []
+
+#     if caller_role == "super_admin":
+#         # Super admin can optionally filter by franchise_id
+#         if franchise_id is not None:
+#             if franchise_id == "none":
+#                 base_filter.append(User.franchise_id.is_(None))
+#             else:
+#                 base_filter.append(User.franchise_id == franchise_id)
+#     elif caller_role == "franchise":
+#         franchise = await _get_franchise_for_owner(db, current_user.id)
+#         if not franchise:
+#             return UserListResponse(items=[], total=0, page=page, limit=limit, pages=0)
+#         base_filter.append(User.franchise_id == franchise.id)
+#     else:
+#         # Employee or other role — scope to own franchise
+#         if current_user.franchise_id:
+#             base_filter.append(User.franchise_id == current_user.franchise_id)
+#         else:
+#             # No franchise association — only see themselves
+#             base_filter.append(User.id == current_user.id)
+
+#     query = select(User).order_by(User.created_at.desc(), User.id.desc())
+#     count_query = select(func.count()).select_from(User)
+
+#     # Filter by role — INNER JOIN (only users who have that role)
+#     if role:
+#         query = query.join(UserRole, UserRole.user_id == User.id)
+#         count_query = count_query.join(UserRole, UserRole.user_id == User.id)
+#         query = query.join(Role, Role.id == UserRole.role_id).where(Role.name == role)
+#         count_query = count_query.join(Role, Role.id == UserRole.role_id).where(Role.name == role)
+#         if assigned_by:
+#             query = query.where(UserRole.assigned_by == assigned_by)
+#             count_query = count_query.where(UserRole.assigned_by == assigned_by)
+#     elif assigned_by:
+#         # OUTER JOIN so users without roles still appear
+#         query = query.outerjoin(UserRole, UserRole.user_id == User.id)
+#         count_query = count_query.outerjoin(UserRole, UserRole.user_id == User.id)
+#         query = query.where(UserRole.assigned_by == assigned_by)
+#         count_query = count_query.where(UserRole.assigned_by == assigned_by)
+
+#     for f in base_filter:
+#         query = query.where(f)
+#         count_query = count_query.where(f)
+
+#     if search:
+#         search_filter = or_(
+#             User.name.ilike(f"%{search}%"),
+#             User.email.ilike(f"%{search}%"),
+#             User.phone.ilike(f"%{search}%"),
+#             User.employee_code.ilike(f"%{search}%"),
+#         )
+#         query = query.where(search_filter)
+#         count_query = count_query.where(search_filter)
+
+#     total = (await db.execute(count_query)).scalar_one()
+#     offset = (page - 1) * limit
+#     result = await db.execute(query.offset(offset).limit(limit))
+#     users = result.scalars().all()
+
+#     items = [await _build_user_out(db, u) for u in users]
+
+#     return UserListResponse(
+#         items=items,
+#         total=total,
+#         page=page,
+#         limit=limit,
+#         pages=math.ceil(total / limit) if total > 0 else 0,
+#     )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 async def update_user(
