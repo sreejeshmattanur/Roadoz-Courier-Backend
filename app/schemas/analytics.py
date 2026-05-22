@@ -1,5 +1,12 @@
 from pydantic import BaseModel
 from typing import Dict, Optional
+from typing import List
+
+class FranchiseOrdersData(BaseModel):
+    franchise_name: str
+    order_count: int
+
+
 
 class DashboardAnalyticsResponse(BaseModel):
     total_orders: int
@@ -21,4 +28,5 @@ class DashboardAnalyticsResponse(BaseModel):
     remittance_pending_sum: Optional[float] = 0.0
     remittance_remitted_sum: Optional[float] = 0.0
     
+    franchise_orders_data: List[FranchiseOrdersData]
     extra_counts: Optional[Dict[str, float]] = None  # E.g. {"total_users": 10, "total_franchises": 2, "total_wallet_balance": 1500.0}

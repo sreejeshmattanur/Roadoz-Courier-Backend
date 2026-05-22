@@ -190,7 +190,30 @@ async def get_dashboard_analytics(
         extra_counts["total_users"] = float(total_users)
         extra_counts["total_franchises"] = float(total_franchises)
         extra_counts["total_wallet_balance"] = float(total_wallet_balance)
-
+        
+        
+    franchise_orders_query = (
+    select(
+        Franchise.id,
+        Franchise.name,
+        Franchise.franchise_code,
+        Franchise.email,
+        Franchise.phone,
+        func.count(Order.id).label("order_count")
+    )
+    .outerjoin(Order,Order.franchise_id == Franchise.id)
+    .group_by(
+        Franchise.id,
+        Franchise.name,
+        Franchise.franchise_code,
+        Franchise.email,
+        Franchise.phone)
+    .order_by(func.count(Order.id).desc()))
+    franchise_orders_result = await db.execute(franchise_orders_query)
+    franchise_orders_data = []
+    for row in franchise_orders_result.all():
+        franchise_orders_data.append({"franchise_name": row.name,"order_count": row.order_count,})    
+            
     return DashboardAnalyticsResponse(
         total_orders=total_orders,
         rto_orders=rto_orders,
@@ -207,5 +230,7 @@ async def get_dashboard_analytics(
         staff_attendance_present_count=staff_attendance_present_count,
         remittance_pending_sum=remittance_pending_sum,
         remittance_remitted_sum=remittance_remitted_sum,
+        franchise_orders_data=franchise_orders_data  if franchise_orders_data else None ,
         extra_counts=extra_counts if extra_counts else None
+        
     )

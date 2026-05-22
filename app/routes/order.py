@@ -113,12 +113,17 @@ def _lazy_decode(image):
 
 @router.get("/pickup-addresses", response_model=PickupAddressListResponse)
 async def search_pickup_addresses_endpoint(
-    search: Optional[str] = Query(None, description="Search by nickname, contact name, address, city, or pincode"),
+    search: Optional[str] = Query(None,description="Search by nickname, contact name, address, city, or pincode",),
+    page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1, le=10),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("pickup_addresses:view")),
-):
-    return await search_pickup_addresses(db, current_user, search=search)
+    _: User = Depends(require_permission("pickup_addresses:view")),):
+    return await search_pickup_addresses(db=db,current_user=current_user,search=search,page=page,limit=limit,)
+
+
+
+
 
 
 @router.post("/pickup-addresses", response_model=PickupAddressOut, status_code=201)
@@ -160,7 +165,7 @@ async def delete_pickup_address_endpoint(
 @router.get("/consignees", response_model=ConsigneeListResponse)
 async def search_consignees_endpoint(
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(25, ge=1, le=100, description="Items per page"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
     search: Optional[str] = Query(None, description="Search by name, email, or mobile"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -266,7 +271,7 @@ async def list_bulk_orders_endpoint(
 @router.get("")
 async def get_orders(
     page: int = Query(1),
-    limit: int = Query(25),
+    limit: int = Query(10),
 
     start_date: datetime | None = None,
     end_date: datetime | None = None,
