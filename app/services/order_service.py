@@ -744,61 +744,85 @@ async def process_bulk_excel_upload(
             if not any(row):
                 continue
             
-            def get_val(key, default=None):
-                if col_map[key] != -1 and col_map[key] < len(row) and row[col_map[key]] is not None:
-                    return row[col_map[key]]
-                return default
+            async with db.begin_nested():
+                def get_val(key, default=None):
+                    if col_map[key] != -1 and col_map[key] < len(row) and row[col_map[key]] is not None:
+                        return row[col_map[key]]
+                    return default
 
-            consignee_data = ConsigneeCreate(
-                name=str(get_val("consignee_name", "")),
-                mobile=str(get_val("mobile", "")),
-                email=get_val("email"),
-                address_line_1=str(get_val("address_line_1", "")),
-                pincode=str(get_val("pincode", "")),
-                city=str(get_val("city", "")),
-                state=str(get_val("state", ""))
-            )
-            
-            consignee_out = await create_consignee(db, consignee_data, current_user)
-            
-            payment_method = _normalize_order_payment_method(str(get_val("payment_method", "Prepaid")))
-            order_data = OrderCreate(
-                order_type=order_type,
-                pickup_address_id=pickup_address_id,
-                consignee_id=consignee_out.id,
-                payment_method=payment_method,
-                cod_amount=float(get_val("cod_amount") or 0) if payment_method == "COD" else None,
-                to_pay_amount=float(get_val("to_pay_amount") or 0) if payment_method == "To Pay" else None,
-                rov=_normalize_order_rov(str(get_val("rov", "owner_risk"))),
-                order_value=float(get_val("order_value") or 0),
-                items=[
-                    {
-                        "product_name": str(get_val("product_name", "Product")),
-                        "sku": get_val("sku"),
-                        "unit_price": float(get_val("unit_price") or 0),
-                        "qty": int(get_val("qty") or 1),
-                        "total": float(get_val("unit_price") or 0) * int(get_val("qty") or 1)
-                    }
-                ],
-                packages=[
-                    {
-                        "count": 1,
-                        "length_cm": float(get_val("length_cm") or 1),
-                        "breadth_cm": float(get_val("breadth_cm") or 1),
-                        "height_cm": float(get_val("height_cm") or 1),
-                        "vol_weight_kg": (float(get_val("length_cm") or 1) * float(get_val("breadth_cm") or 1) * float(get_val("height_cm") or 1)) / 5000,
-                        "physical_weight_kg": float(get_val("physical_weight_kg") or 1)
-                    }
-                ],
-                shipping_charge=0 
-            )
-            
-            order_out = await create_order(db, order_data, current_user)
-            
-            # Update bulk_order_id directly
-            order = await db.get(Order, order_out.id)
-            order.bulk_order_id = bulk_order.id
-            
+                consignee_mobile = str(get_val("mobile", "")).strip()
+                consignee_name = str(get_val("consignee_name", "")).strip()
+                consignee_email = get_val("email")
+                if consignee_email:
+                    consignee_email = consignee_email.strip()
+
+                # Check if consignee already exists
+                query = select(Consignee).where(
+                    and_(
+                        Consignee.mobile == consignee_mobile,
+                        Consignee.name == consignee_name
+                    )
+                )
+                if franchise_id:
+                    query = query.where(Consignee.franchise_id == franchise_id)
+                else:
+                    query = query.where(Consignee.user_id == current_user.id)
+
+                existing_consignee = (await db.execute(query)).scalars().first()
+
+                if existing_consignee:
+                    consignee_id = existing_consignee.id
+                else:
+                    consignee_data = ConsigneeCreate(
+                        name=consignee_name,
+                        mobile=consignee_mobile,
+                        email=consignee_email,
+                        address_line_1=str(get_val("address_line_1", "")),
+                        pincode=str(get_val("pincode", "")),
+                        city=str(get_val("city", "")),
+                        state=str(get_val("state", ""))
+                    )
+                    consignee_out = await create_consignee(db, consignee_data, current_user)
+                    consignee_id = consignee_out.id
+                
+                payment_method = _normalize_order_payment_method(str(get_val("payment_method", "Prepaid")))
+                order_data = OrderCreate(
+                    order_type=order_type,
+                    pickup_address_id=pickup_address_id,
+                    consignee_id=consignee_id,
+                    payment_method=payment_method,
+                    cod_amount=float(get_val("cod_amount") or 0) if payment_method == "COD" else None,
+                    to_pay_amount=float(get_val("to_pay_amount") or 0) if payment_method == "To Pay" else None,
+                    rov=_normalize_order_rov(str(get_val("rov", "owner_risk"))),
+                    order_value=float(get_val("order_value") or 0),
+                    items=[
+                        {
+                            "product_name": str(get_val("product_name", "Product")),
+                            "sku": get_val("sku"),
+                            "unit_price": float(get_val("unit_price") or 0),
+                            "qty": int(get_val("qty") or 1),
+                            "total": float(get_val("unit_price") or 0) * int(get_val("qty") or 1)
+                        }
+                    ],
+                    packages=[
+                        {
+                            "count": 1,
+                            "length_cm": float(get_val("length_cm") or 1),
+                            "breadth_cm": float(get_val("breadth_cm") or 1),
+                            "height_cm": float(get_val("height_cm") or 1),
+                            "vol_weight_kg": (float(get_val("length_cm") or 1) * float(get_val("breadth_cm") or 1) * float(get_val("height_cm") or 1)) / 5000,
+                            "physical_weight_kg": float(get_val("physical_weight_kg") or 1)
+                        }
+                    ],
+                    shipping_charge=0 
+                )
+                
+                order_out = await create_order(db, order_data, current_user)
+                
+                # Update bulk_order_id directly
+                order = await db.get(Order, order_out.id)
+                order.bulk_order_id = bulk_order.id
+                
             success_count += 1
                 
         except Exception as exc:

@@ -121,9 +121,12 @@ async def authenticate_user(db: AsyncSession, request: LoginRequest, http_reques
     )
 
 
-async def get_user_role_by_email(db: AsyncSession, email: str) -> RoleCheckResponse:
+async def get_user_role_by_email(db: AsyncSession, email: str, http_request: Request = None) -> RoleCheckResponse:
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
+
+    if user and http_request:
+        http_request.state.user_id = user.id
 
     if not user:
         return RoleCheckResponse(role=None, requires_franchise_code=False)

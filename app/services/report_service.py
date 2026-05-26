@@ -782,13 +782,21 @@ async def branch_activity_report(
     current_user: User,
     date_from: date | None = None,
     date_to: date | None = None,
+    franchise_id: str | None = None,
 ) -> dict:
+    scoped_franchise_id = await _scope_franchise_id(db, current_user, franchise_id)
     additional_filters = [CashVoucher.type == "receipt"]
+    if scoped_franchise_id:
+        additional_filters.append(CashVoucher.franchise_id == scoped_franchise_id)
+
     resolved_from, resolved_to, opening_collections = await _resolve_dates_and_opening(
         db, CashVoucher, CashVoucher.voucher_date, date_from, date_to, CashVoucher.amount, additional_filters
     )
 
-    franchises = (await db.execute(select(Franchise))).scalars().all()
+    franchise_filters = []
+    if scoped_franchise_id:
+        franchise_filters.append(Franchise.id == scoped_franchise_id)
+    franchises = (await db.execute(select(Franchise).where(and_(*franchise_filters)))).scalars().all()
     items = []
     for f in franchises:
         bookings = (await db.execute(
@@ -861,11 +869,16 @@ async def user_activity_report(
     current_user: User,
     date_from: date | None = None,
     date_to: date | None = None,
+    franchise_id: str | None = None,
 ) -> dict:
+    scoped_franchise_id = await _scope_franchise_id(db, current_user, franchise_id)
     resolved_from, resolved_to, _ = await _resolve_dates_and_opening(
         db, Order, Order.created_at, date_from, date_to, None, []
     )
-    users = (await db.execute(select(User))).scalars().all()
+    filters = []
+    if scoped_franchise_id:
+        filters.append(User.franchise_id == scoped_franchise_id)
+    users = (await db.execute(select(User).where(and_(*filters)))).scalars().all()
     items = []
     for u in users:
         login_row = (await db.execute(
