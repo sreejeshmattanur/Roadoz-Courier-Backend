@@ -35,8 +35,8 @@ async def login(request: LoginRequest, http_request: Request, db: AsyncSession =
 
 
 @router.post("/role", response_model=RoleCheckResponse)
-async def get_role(request: RoleCheckRequest, db: AsyncSession = Depends(get_db)):
-    return await get_user_role_by_email(db, request.email)
+async def get_role(request: RoleCheckRequest, http_request: Request, db: AsyncSession = Depends(get_db)):
+    return await get_user_role_by_email(db, request.email, http_request)
 
 
 @router.post("/refresh", response_model=TokenResponse)

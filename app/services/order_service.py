@@ -693,6 +693,7 @@ async def create_order(
     return _build_order_out(order)
 
 
+
 async def process_bulk_excel_upload(
     db: AsyncSession,
     file_content: bytes,
@@ -829,7 +830,6 @@ async def process_bulk_excel_upload(
         bulk_order=BulkOrderOut.model_validate(bulk_order),
         errors=errors
     )
-
 
 
 

@@ -197,11 +197,13 @@ async def get_dashboard_analytics(
     # franchise order count    
     offset = (pagef - 1) * limitf   
     total_query = select(func.count(Franchise.id))
+    if franchise_id:
+        total_query = total_query.where(Franchise.id == franchise_id)
     total_result = await db.execute(total_query)
     total = total_result.scalar() or 0
 
     # main query with pagination
-    franchise_orders_query = (
+    base_franchise_orders_query = (
         select(
             Franchise.id,
             Franchise.name,
@@ -211,6 +213,12 @@ async def get_dashboard_analytics(
             func.count(Order.id).label("order_count")
         )
         .outerjoin(Order, Order.franchise_id == Franchise.id)
+    )
+    if franchise_id:
+        base_franchise_orders_query = base_franchise_orders_query.where(Franchise.id == franchise_id)
+
+    franchise_orders_query = (
+        base_franchise_orders_query
         .group_by(
             Franchise.id,
             Franchise.name,
