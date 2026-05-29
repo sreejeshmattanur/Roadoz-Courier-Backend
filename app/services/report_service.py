@@ -43,8 +43,8 @@ async def _resolve_dates_and_opening(
     additional_filters: list[Any] = None
 ) -> tuple[date, date, Any]:
     """
-    Resolves start_date (date_from) and end_date (date_to), and calculates the accumulated
-    opening amount(s) prior to start_date.
+    Calculates the accumulated opening amount from date_from to date_to - 1.
+    Returns (date_to, date_to, opening_amount) so that the report only fetches items for date_to.
     """
     if additional_filters is None:
         additional_filters = []
@@ -52,39 +52,44 @@ async def _resolve_dates_and_opening(
     resolved_to = date_to or date.today()
     
     if date_from:
-        resolved_from = date_from
+        real_from = date_from
     else:
-        # Resolve earliest record date
         query = select(func.min(date_column))
         if additional_filters:
             query = query.where(and_(*additional_filters))
         earliest_time = (await db.execute(query)).scalar()
         if earliest_time:
             if isinstance(earliest_time, datetime):
-                resolved_from = earliest_time.date()
+                real_from = earliest_time.date()
             elif isinstance(earliest_time, date):
-                resolved_from = earliest_time
+                real_from = earliest_time
             else:
-                resolved_from = date(2026, 1, 1)
+                real_from = date(2026, 1, 1)
         else:
-            resolved_from = date(2026, 1, 1)
+            real_from = date(2026, 1, 1)
             
-    # Calculate opening amount before start_date
     if amount_columns is None:
-        return resolved_from, resolved_to, 0.0
+        return resolved_to, resolved_to, 0.0
         
     is_list = isinstance(amount_columns, list)
     cols = amount_columns if is_list else [amount_columns]
     
-    start_datetime = datetime.combine(resolved_from, datetime.min.time())
+    start_datetime = datetime.combine(real_from, datetime.min.time())
+    end_datetime = datetime.combine(resolved_to, datetime.min.time())
     
     if isinstance(date_column.type, DateTime):
-        boundary = start_datetime
+        boundary_start = start_datetime
+        boundary_end = end_datetime
     else:
-        boundary = resolved_from
+        boundary_start = real_from
+        boundary_end = resolved_to
         
     select_exprs = [func.coalesce(func.sum(col), 0) for col in cols]
-    query = select(*select_exprs).where(date_column < boundary)
+    query = select(*select_exprs).where(and_(
+        date_column >= boundary_start,
+        date_column < boundary_end
+    ))
+    
     if additional_filters:
         query = query.where(and_(*additional_filters))
         
@@ -95,9 +100,9 @@ async def _resolve_dates_and_opening(
         opening_values = [0.0] * len(cols)
         
     if is_list:
-        return resolved_from, resolved_to, opening_values
+        return resolved_to, resolved_to, opening_values
     else:
-        return resolved_from, resolved_to, opening_values[0]
+        return resolved_to, resolved_to, opening_values[0]
 
 
 async def _get_caller_role_name(db: AsyncSession, user_id: str) -> str | None:
@@ -195,7 +200,7 @@ async def daily_booking_report(
         "total_amount": total_amount,
         "items": items,
         "totals": {
-            "amount": total_amount
+            "amount": _to_float(float(opening_amount) + float(total_amount))
         }
     }
 
@@ -252,8 +257,8 @@ async def customer_wise_booking_report(
         "opening_pending_amount": opening_vals[1],
         "items": items,
         "totals": {
-            "revenue": total_rev,
-            "pending_amount": total_pending
+            "revenue": _to_float(float(opening_vals[0]) + float(total_rev)),
+            "pending_amount": _to_float(float(opening_vals[1]) + float(total_pending))
         }
     }
 
@@ -296,7 +301,7 @@ async def service_type_report(
         "opening_amount": opening_revenue,
         "items": items,
         "totals": {
-            "revenue": total_rev
+            "revenue": _to_float(float(opening_revenue) + float(total_rev))
         }
     }
 
@@ -426,7 +431,7 @@ async def cod_pending_report(
         "total_pending_amount": total_pending,
         "items": items,
         "totals": {
-            "pending_amount": total_pending
+            "pending_amount": _to_float(float(opening_pending) + float(total_pending))
         }
     }
 
@@ -483,11 +488,11 @@ async def gst_sales_report(
         "opening_total": opening_vals[2],
         "items": items,
         "totals": {
-            "taxable_amount": total_taxable,
-            "cgst": total_cgst,
-            "sgst": total_sgst,
+            "taxable_amount": _to_float(float(opening_vals[0]) + float(total_taxable)),
+            "cgst": _to_float(float(_to_float(opening_vals[1] / 2)) + float(total_cgst)),
+            "sgst": _to_float(float(_to_float(opening_vals[1] / 2)) + float(total_sgst)),
             "igst": total_igst,
-            "total": total_total
+            "total": _to_float(float(opening_vals[2]) + float(total_total))
         }
     }
 
@@ -559,10 +564,10 @@ async def franchise_settlement_report(
         "opening_net_payable": opening_franchise,
         "items": items,
         "totals": {
-            "revenue": total_revenue,
-            "ho_share": total_ho,
-            "franchise_share": total_franchise,
-            "net_payable": total_payable
+            "revenue": _to_float(float(opening_rev_val) + float(total_revenue)),
+            "ho_share": _to_float(float(opening_ho) + float(total_ho)),
+            "franchise_share": _to_float(float(opening_franchise) + float(total_franchise)),
+            "net_payable": _to_float(float(opening_franchise) + float(total_payable))
         }
     }
 
@@ -607,9 +612,9 @@ async def monthly_revenue_analysis(db: AsyncSession, current_user: User, year: i
         "opening_profit": _to_float(opening_revenue),
         "items": items,
         "totals": {
-            "revenue": total_revenue,
+            "revenue": _to_float(float(opening_revenue) + float(total_revenue)),
             "expenses": total_expenses,
-            "profit": total_profit
+            "profit": _to_float(float(opening_revenue) + float(total_profit))
         }
     }
 
@@ -629,8 +634,8 @@ async def top_customer_report(
     total_rev = _to_float(sum(item["revenue"] for item in data["items"]))
     total_pending = _to_float(sum(item["pending_amount"] for item in data["items"]))
     data["totals"] = {
-        "revenue": total_rev,
-        "pending_amount": total_pending
+        "revenue": _to_float(float(data.get("opening_revenue", 0.0)) + float(total_rev)),
+        "pending_amount": _to_float(float(data.get("opening_pending_amount", 0.0)) + float(total_pending))
     }
     return data
 
@@ -754,7 +759,7 @@ async def day_close_report(
     
     total_collection = _to_float(today_collection)
     total_expenses = _to_float(float(today_payments) + float(today_expenses_table))
-    closing_balance = _to_float(opening_balance + total_collection - total_expenses)
+    closing_balance = _to_float(float(opening_balance) + float(total_collection) - float(total_expenses))
     
     items = [{
         "opening_balance": opening_balance,
@@ -858,7 +863,7 @@ async def branch_activity_report(
         "totals": {
             "bookings": total_bookings,
             "deliveries": total_deliveries,
-            "collections": total_collections,
+            "collections": _to_float(float(opening_collections) + float(total_collections)),
             "pending": total_pending
         }
     }
@@ -1002,7 +1007,7 @@ async def collection_summary_report(
         "opening_amount": opening_amount,
         "items": items,
         "totals": {
-            "amount": total_amount
+            "amount": _to_float(float(opening_amount) + float(total_amount))
         }
     }
 
@@ -1050,7 +1055,7 @@ async def outstanding_collection_report(
         "opening_balance": opening_balance,
         "items": items,
         "totals": {
-            "balance": total_balance
+            "balance": _to_float(float(opening_balance) + float(total_balance))
         }
     }
 
@@ -1139,10 +1144,10 @@ async def daily_collection_report(
         "opening_total": _to_float(opening_total),
         "items": items,
         "totals": {
-            "cash": total_cash,
-            "upi": total_upi,
-            "bank_transfer": total_bank,
-            "total": total_total
+            "cash": _to_float(float(opening_cash) + float(total_cash)),
+            "upi": _to_float(float(opening_upi) + float(total_upi)),
+            "bank_transfer": _to_float(float(opening_bank) + float(total_bank)),
+            "total": _to_float(float(opening_total) + float(total_total))
         }
     }
 
@@ -1215,9 +1220,9 @@ async def cod_settlement_report(
         "opening_net_payable": opening_net_val,
         "items": items,
         "totals": {
-            "cod_amount": total_cod,
-            "commission": total_commission,
-            "net_payable": total_payable
+            "cod_amount": _to_float(float(opening_cod_val) + float(total_cod)),
+            "commission": _to_float(float(opening_comm_val) + float(total_commission)),
+            "net_payable": _to_float(float(opening_net_val) + float(total_payable))
         }
     }
 
@@ -1277,7 +1282,7 @@ async def cod_commission_report(
         "opening_amount": _to_float(opening_cod * 0.05),
         "items": items,
         "totals": {
-            "amount": total_commission
+            "amount": _to_float(float(opening_cod * 0.05) + float(total_commission))
         }
     }
 
@@ -1401,7 +1406,7 @@ async def expense_report(
         "opening_amount": opening_amount,
         "items": items,
         "totals": {
-            "amount": total_amount
+            "amount": _to_float(float(opening_amount) + float(total_amount))
         }
     }
 
@@ -1548,8 +1553,8 @@ async def hsn_summary_report(
         "opening_gst_amount": _to_float(opening_revenue * 0.18),
         "items": items,
         "totals": {
-            "taxable_amount": taxable,
-            "gst_amount": gst
+            "taxable_amount": _to_float(opening_revenue + taxable),
+            "gst_amount": _to_float((opening_revenue * 0.18) + gst)
         }
     }
 
@@ -1630,9 +1635,9 @@ async def gst_collection_summary(
         "opening_balance": opening_balance,
         "items": items,
         "totals": {
-            "collected_gst": total_collected,
-            "paid_gst": total_paid,
-            "balance": total_balance
+            "collected_gst": _to_float(float(opening_collected) + float(total_collected)),
+            "paid_gst": _to_float(float(opening_paid) + float(total_paid)),
+            "balance": _to_float(float(opening_balance) + float(total_balance))
         }
     }
 
@@ -1680,7 +1685,7 @@ async def franchise_outstanding_report(
         "opening_pending_amount": opening_pending,
         "items": items,
         "totals": {
-            "pending_amount": total_pending
+            "pending_amount": _to_float(float(opening_pending) + float(total_pending))
         }
     }
 
@@ -1797,9 +1802,9 @@ async def franchise_collection_report(
         "opening_balance": opening_balance_val,
         "items": items,
         "totals": {
-            "cash_collection": total_cash,
-            "bank_deposit": total_bank,
-            "closing_balance": total_closing
+            "cash_collection": _to_float(float(total_cash_opening) + float(total_cash)),
+            "bank_deposit": _to_float(float(total_bank_opening) + float(total_bank)),
+            "closing_balance": _to_float(float(opening_balance_val) + float(total_closing))
         }
     }
 
@@ -1893,9 +1898,9 @@ async def franchise_profitability_report(
         "opening_profit": opening_profit_val,
         "items": items,
         "totals": {
-            "revenue": total_revenue,
-            "expenses": total_expenses,
-            "profit": total_profit
+            "revenue": _to_float(float(opening_rev_val) + float(total_revenue)),
+            "expenses": _to_float(float(opening_exp_val) + float(total_expenses)),
+            "profit": _to_float(float(opening_profit_val) + float(total_profit))
         }
     }
 
@@ -1970,7 +1975,7 @@ async def area_wise_business_report(
         "items": items,
         "totals": {
             "shipments": total_shipments,
-            "revenue": total_revenue,
+            "revenue": _to_float(float(opening_revenue) + float(total_revenue)),
             "pending_deliveries": total_pending
         }
     }
