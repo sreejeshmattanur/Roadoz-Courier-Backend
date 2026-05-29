@@ -1146,7 +1146,7 @@ async def daily_collection_report(
         "totals": {
             "cash": _to_float(opening_cash + total_cash),
             "upi": _to_float(opening_upi + total_upi),
-            "bank_transfer": _to_float(opening_bank_transfer + total_bank),
+            "bank_transfer": _to_float(opening_bank + total_bank),
             "total": _to_float(opening_total + total_total)
         }
     }
@@ -1220,9 +1220,9 @@ async def cod_settlement_report(
         "opening_net_payable": opening_net_val,
         "items": items,
         "totals": {
-            "cod_amount": _to_float(opening_amount + total_cod),
-            "commission": _to_float(opening_commission + total_commission),
-            "net_payable": _to_float(opening_net_payable + total_payable)
+            "cod_amount": _to_float(opening_cod_val + total_cod),
+            "commission": _to_float(opening_comm_val + total_commission),
+            "net_payable": _to_float(opening_net_val + total_payable)
         }
     }
 
@@ -1282,7 +1282,7 @@ async def cod_commission_report(
         "opening_amount": _to_float(opening_cod * 0.05),
         "items": items,
         "totals": {
-            "amount": _to_float(opening_amount + total_commission)
+            "amount": _to_float((opening_cod * 0.05) + total_commission)
         }
     }
 
@@ -1553,8 +1553,8 @@ async def hsn_summary_report(
         "opening_gst_amount": _to_float(opening_revenue * 0.18),
         "items": items,
         "totals": {
-            "taxable_amount": _to_float(opening_taxable_amount + taxable),
-            "gst_amount": _to_float(opening_gst_amount + gst)
+            "taxable_amount": _to_float(opening_revenue + taxable),
+            "gst_amount": _to_float((opening_revenue * 0.18) + gst)
         }
     }
 
@@ -1635,8 +1635,8 @@ async def gst_collection_summary(
         "opening_balance": opening_balance,
         "items": items,
         "totals": {
-            "collected_gst": _to_float(opening_collected_gst + total_collected),
-            "paid_gst": _to_float(opening_paid_gst + total_paid),
+            "collected_gst": _to_float(opening_collected + total_collected),
+            "paid_gst": _to_float(opening_paid + total_paid),
             "balance": _to_float(opening_balance + total_balance)
         }
     }
@@ -1802,9 +1802,9 @@ async def franchise_collection_report(
         "opening_balance": opening_balance_val,
         "items": items,
         "totals": {
-            "cash_collection": _to_float(opening_cash_collection + total_cash),
-            "bank_deposit": _to_float(opening_bank_deposit + total_bank),
-            "closing_balance": _to_float(opening_balance + total_closing)
+            "cash_collection": _to_float(total_cash_opening + total_cash),
+            "bank_deposit": _to_float(total_bank_opening + total_bank),
+            "closing_balance": _to_float(opening_balance_val + total_closing)
         }
     }
 
@@ -1898,9 +1898,9 @@ async def franchise_profitability_report(
         "opening_profit": opening_profit_val,
         "items": items,
         "totals": {
-            "revenue": _to_float(opening_revenue + total_revenue),
-            "expenses": total_expenses,
-            "profit": _to_float(opening_revenue + total_profit)
+            "revenue": _to_float(opening_rev_val + total_revenue),
+            "expenses": _to_float(opening_exp_val + total_expenses),
+            "profit": _to_float(opening_profit_val + total_profit)
         }
     }
 
