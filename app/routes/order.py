@@ -1,6 +1,6 @@
 import base64
 from typing import Optional
-
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status, File, UploadFile, Form
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -2484,11 +2484,6 @@ async def get_today_status_orders(
 
                     for item in order.items
                 ],
-
-                # =================================================
-                # PACKAGES
-                # =================================================
-
                 "packages": [
 
                     {
@@ -2924,16 +2919,271 @@ async def get_date_wise_all_status(
     "statuses": unique_statuses
     }
     
-    
-    
-    
+   
 
 
+class TodayStatusRequest(BaseModel):
+    date: date
+    status: str
 
 
+@router.post("/orders/date-wise-status-address")
+async def get_date_wise_status_address(
+    payload: TodayStatusRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:view")),
+):
 
+    role_result = await db.execute(
+        select(Role.name)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(UserRole.user_id == current_user.id)
+    )
 
+    role_name = role_result.scalar_one_or_none()
 
+    selected_date = payload.date
+    selected_status = payload.status.strip()
+
+    parts = selected_status.split("_")
+    base_status = parts[0]
+    has_suffix = len(parts) > 1
+
+    addresses = []
+
+    # =========================================================
+    # PICKED STATUS
+    # =========================================================
+
+    if base_status == "Picked":
+
+        filters = [
+            func.date(PickupToConsignees.updated_at) == selected_date,
+        ]
+
+        if has_suffix:
+            filters.append(
+                PickupToConsignees.status == selected_status
+            )
+        else:
+            filters.append(
+                or_(
+                    PickupToConsignees.status == "Picked",
+                    PickupToConsignees.status.like("Picked\\_%")
+                )
+            )
+
+        if role_name != "super_admin":
+            filters.append(
+                PickupToConsignees.user_id == current_user.id
+            )
+
+        result = await db.execute(
+            select(
+                PickupAddress.id,
+                PickupAddress.nickname,
+                PickupAddress.contact_name,
+                PickupAddress.phone,
+                PickupAddress.email,
+                PickupAddress.address_line_1,
+                PickupAddress.address_line_2,
+                PickupAddress.city,
+                PickupAddress.state,
+                PickupAddress.country,
+                PickupAddress.pincode,
+                PickupToConsignees.status.label("status_found"),
+            )
+            .join(
+                PickupAddress,
+                PickupAddress.id == PickupToConsignees.pickup_addresses_id
+            )
+            .where(*filters)
+            .distinct()
+        )
+
+        rows = result.all()
+
+        for row in rows:
+            addresses.append({
+                "type": "pickup_address",
+                "id": row.id,
+                "nickname": row.nickname,
+                "contact_name": row.contact_name,
+                "phone": row.phone,
+                "email": row.email,
+                "address_line_1": row.address_line_1,
+                "address_line_2": row.address_line_2,
+                "city": row.city,
+                "state": row.state,
+                "country": row.country,
+                "pincode": row.pincode,
+                "status": row.status_found,
+                "date": str(selected_date),
+            })
+
+    # =========================================================
+    # WAREHOUSE STATUS
+    # =========================================================
+
+    elif base_status == "Warehouse":
+
+        filters = [
+            func.date(WarehouseToDelivery.updated_at) == selected_date,
+        ]
+
+        if has_suffix:
+            filters.append(
+                WarehouseToDelivery.status == selected_status
+            )
+        else:
+            filters.append(
+                or_(
+                    WarehouseToDelivery.status == "Warehouse",
+                    WarehouseToDelivery.status.like("Warehouse\\_%")
+                )
+            )
+
+        if role_name != "super_admin":
+            filters.append(
+                WarehouseToDelivery.user_id == current_user.id
+            )
+
+        result = await db.execute(
+            select(
+                WareHouseAddress.id,
+                WareHouseAddress.nickname,
+                WareHouseAddress.contact_name,
+                WareHouseAddress.phone,
+                WareHouseAddress.email,
+                WareHouseAddress.address_line_1,
+                WareHouseAddress.address_line_2,
+                WareHouseAddress.city,
+                WareHouseAddress.state,
+                WareHouseAddress.country,
+                WareHouseAddress.pincode,
+                WarehouseToDelivery.status.label("status_found"),
+            )
+            .join(
+                WareHouseAddress,
+                WareHouseAddress.id == WarehouseToDelivery.warehouse_addresses_id
+            )
+            .where(*filters)
+            .distinct()
+        )
+
+        rows = result.all()
+
+        for row in rows:
+            addresses.append({
+                "type": "warehouse_address",
+                "id": row.id,
+                "nickname": row.nickname,
+                "contact_name": row.contact_name,
+                "phone": row.phone,
+                "email": row.email,
+                "address_line_1": row.address_line_1,
+                "address_line_2": row.address_line_2,
+                "city": row.city,
+                "state": row.state,
+                "country": row.country,
+                "pincode": row.pincode,
+                "status": row.status_found,
+                "date": str(selected_date),
+            })
+
+    # =========================================================
+    # DISPATCHED STATUS
+    # =========================================================
+
+    elif base_status == "Dispatched":
+
+        filters = [
+            func.date(FranchiseToDelivery.updated_at) == selected_date,
+        ]
+
+        if has_suffix:
+            filters.append(
+                FranchiseToDelivery.status == selected_status
+            )
+        else:
+            filters.append(
+                or_(
+                    FranchiseToDelivery.status == "Dispatched",
+                    FranchiseToDelivery.status.like("Dispatched\\_%")
+                )
+            )
+
+        if role_name != "super_admin":
+            filters.append(
+                FranchiseToDelivery.user_id == current_user.id
+            )
+
+        result = await db.execute(
+            select(
+                Franchise.id,
+                Franchise.name,
+                Franchise.phone,
+                Franchise.email,
+                Franchise.address,
+                Franchise.pincode,
+                Franchise.proposed_location,
+                Franchise.detailed_business_address,
+                Franchise.nearby_landmark,
+                FranchiseToDelivery.status.label("status_found"),
+            )
+            .join(
+                Franchise,
+                Franchise.id == FranchiseToDelivery.franchise_addresses_id
+            )
+            .where(*filters)
+            .distinct()
+        )
+
+        rows = result.all()
+
+        for row in rows:
+            addresses.append({
+                "type": "franchise_address",
+                "id": row.id,
+                "name": row.name,
+                "phone": row.phone,
+                "email": row.email,
+                "address": row.address,
+                "pincode": row.pincode,
+                "proposed_location": row.proposed_location,
+                "detailed_business_address": row.detailed_business_address,
+                "nearby_landmark": row.nearby_landmark,
+                "status": row.status_found,
+                "date": str(selected_date),
+            })
+
+    # =========================================================
+    # INVALID STATUS
+    # =========================================================
+
+    else:
+        return {
+            "success": False,
+            "message": "Invalid status",
+            "supported_statuses": [
+                "Picked",
+                "Warehouse",
+                "Dispatched"
+            ]
+        }
+
+    # =========================================================
+    # FINAL RESPONSE
+    # =========================================================
+
+    return {
+        "success": True,
+        "date": str(selected_date),
+        "searched_status": selected_status,
+        "total_unique_addresses": len(addresses),
+        "addresses": addresses,
+    }
 
 
 
