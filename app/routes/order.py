@@ -1810,13 +1810,129 @@ async def process_order_scan(
 
 
 
+# async def process_bag_scan(
+#     db: AsyncSession,
+#     bag: Bag,
+#     gps_pincode: str,
+#     current_user: User
+# ):
+#     """Process bulk bag scan - NO manual transaction management"""
+#     responses = []
+#     successful = 0
+#     failed = 0
+    
+#     # Define status priority (higher number = more advanced)
+#     def get_status_priority(status: str) -> int:
+#         if not status:
+#             return 0
+#         if status == "Picked":
+#             return 10
+#         elif status and status.startswith("Warehouse"):
+#             try:
+#                 num = int(status.split("_")[1]) if "_" in status else 1
+#                 return 20 + (num - 1)
+#             except:
+#                 return 20
+#         elif status and status.startswith("Dispatched"):
+#             try:
+#                 num = int(status.split("_")[1]) if "_" in status else 1
+#                 return 30 + (num - 1)
+#             except:
+#                 return 30
+#         elif status == "Delivered":
+#             return 100
+#         return 0
+    
+#     highest_priority = get_status_priority(bag.status)
+    
+#     # Preload all tracking data for orders in bag
+#     order_ids = [bo.order.id for bo in bag.bag_orders if bo.order]
+#     tracking_cache = await preload_tracking_statuses(db, order_ids)
+    
+#     # Process each order - NO begin_nested, NO begin()
+#     for bag_order in bag.bag_orders:
+#         order = bag_order.order
+#         if not order:
+#             continue
+        
+#         try:
+#             # Direct call WITHOUT any transaction context
+#             result = await process_order_scan(db, order, gps_pincode, current_user, tracking_cache)
+#             await db.refresh(order)
+            
+#             stage = result.get("stage")
+#             current_priority = get_status_priority(stage)
+            
+#             # Update bag status if this order reached a higher stage
+#             if current_priority > highest_priority:
+#                 highest_priority = current_priority
+#                 bag.previous_status = bag.status
+#                 bag.status = stage
+#                 bag.pincode = gps_pincode
+#                 bag.updated_at = indian_time()
+#                 try:
+#                     await create_notification(
+#                         db=db,
+#                         title=f"Bag {bag.status}",
+#                         message=f"Bag {bag.bag_number} has been {bag.status} at pincode {gps_pincode}",
+#                         type="bag",
+#                         order_id=None,
+#                         bag_id=bag.id
+#                     )
+#                 except:
+#                     pass  # Don't let notification failure break the scan
+            
+#             responses.append({
+#                 "order_id": order.id,
+#                 "order_number": order.order_number,
+#                 "status": stage,
+#                 "success": True,
+#                 "details": result
+#             })
+#             successful += 1
+            
+#         except HTTPException as e:
+#             responses.append({
+#                 "order_id": order.id,
+#                 "order_number": order.order_number,
+#                 "error": e.detail,
+#                 "success": False
+#             })
+#             failed += 1
+#         except Exception as e:
+#             responses.append({
+#                 "order_id": order.id,
+#                 "order_number": order.order_number,
+#                 "error": str(e),
+#                 "success": False
+#             })
+#             failed += 1
+    
+#     # Commit all changes at once
+#     db.add(bag)
+#     await db.commit()
+    
+#     return {
+#         "bag_id": bag.id,
+#         "bag_number": bag.bag_number,
+#         "bag_status": bag.status,
+#         "previous_status": bag.previous_status,
+#         "bag_pincode": bag.pincode,
+#         "total_orders": len(bag.bag_orders),
+#         "successful_scans": successful,
+#         "failed_scans": failed,
+#         "results": responses
+#     }
+
+
+
 async def process_bag_scan(
     db: AsyncSession,
     bag: Bag,
     gps_pincode: str,
     current_user: User
 ):
-    """Process bulk bag scan - NO manual transaction management"""
+    """Process bulk bag scan with proper previous_status tracking"""
     responses = []
     successful = 0
     failed = 0
@@ -1843,34 +1959,40 @@ async def process_bag_scan(
             return 100
         return 0
     
-    highest_priority = get_status_priority(bag.status)
+    # Store the original bag status BEFORE any changes
+    original_bag_status = bag.status
+    current_highest_priority = get_status_priority(original_bag_status)
+    status_changed = False
     
     # Preload all tracking data for orders in bag
     order_ids = [bo.order.id for bo in bag.bag_orders if bo.order]
     tracking_cache = await preload_tracking_statuses(db, order_ids)
     
-    # Process each order - NO begin_nested, NO begin()
+    # Process each order
     for bag_order in bag.bag_orders:
         order = bag_order.order
         if not order:
             continue
         
         try:
-            # Direct call WITHOUT any transaction context
+            # Process order scan
             result = await process_order_scan(db, order, gps_pincode, current_user, tracking_cache)
             await db.refresh(order)
             
             stage = result.get("stage")
             current_priority = get_status_priority(stage)
-            
-            # Update bag status if this order reached a higher stage
-            if current_priority > highest_priority:
-                highest_priority = current_priority
+            if current_priority > current_highest_priority:
+                current_highest_priority = current_priority
+                
+                # Store previous status ONLY ONCE (if not already stored)
+                if not status_changed:
+                    bag.previous_status = original_bag_status
+                    status_changed = True
+                
                 bag.status = stage
                 bag.pincode = gps_pincode
                 bag.updated_at = indian_time()
                 
-                # Create bag-level notification (don't await if not needed)
                 try:
                     await create_notification(
                         db=db,
@@ -1881,7 +2003,7 @@ async def process_bag_scan(
                         bag_id=bag.id
                     )
                 except:
-                    pass  # Don't let notification failure break the scan
+                    pass
             
             responses.append({
                 "order_id": order.id,
@@ -1916,6 +2038,7 @@ async def process_bag_scan(
     return {
         "bag_id": bag.id,
         "bag_number": bag.bag_number,
+        "bag_previous_status": bag.previous_status,
         "bag_status": bag.status,
         "bag_pincode": bag.pincode,
         "total_orders": len(bag.bag_orders),
@@ -1923,6 +2046,7 @@ async def process_bag_scan(
         "failed_scans": failed,
         "results": responses
     }
+
 
 
 
@@ -2795,7 +2919,6 @@ async def track_order_by_barcode(
 
 
 
-
 @router.delete("/delete-scanned-order_with_mistak/{id}/{orderid}")
 async def delete_scanned_order(
     id: str,
@@ -3642,3 +3765,505 @@ async def get_bag_barcode_image(
         buffer,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="barcode_{bag.bag_number}.{format}"',"Cache-Control": "no-cache"})    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+# @router.delete("/delete-scanned-order_with_mistakforbulkorder/{bag_id}/{address_id}")
+# async def delete_scanned_order_for_bulk(
+#     bag_id: str,
+#     address_id: str,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+# ):
+#     bag_result = await db.execute(select(Bag).where(Bag.id == bag_id))
+#     bag = bag_result.scalar_one_or_none()
+#     if not bag:
+#         raise HTTPException(status_code=404, detail="Bag not found")
+#     role_result = await db.execute(
+#         select(Role.name)
+#         .join(UserRole, UserRole.role_id == Role.id)
+#         .where(UserRole.user_id == current_user.id))
+#     role_name = role_result.scalar_one_or_none()
+#     if role_name != "super_admin" and bag.created_by != current_user.id:
+#         raise HTTPException(status_code=403, detail="You can only revert scanned entries from bags you created")
+#     deleted_from = None
+#     order_id = None
+#     order = None
+#     entry_to_delete = None
+#     order_previous_status = None
+    
+#     # 1. Try to find the entry in WarehouseToDelivery by warehouse_addresses_id
+#     warehouse_result = await db.execute(
+#         select(WarehouseToDelivery).where(WarehouseToDelivery.warehouse_addresses_id == address_id))
+#     warehouse_entries = warehouse_result.scalars().all()
+#     for warehouse_entry in warehouse_entries:
+#         bag_order_check = await db.execute(
+#             select(BagOrder).where(BagOrder.order_id == warehouse_entry.order_id,BagOrder.bag_id == bag_id))
+#         if bag_order_check.scalar_one_or_none():
+#             entry_to_delete = warehouse_entry
+#             deleted_from = "WarehouseToDelivery"
+#             order_id = warehouse_entry.order_id
+#             break
+#     if entry_to_delete:
+#         order_result = await db.execute(select(Order).where(Order.id == order_id))
+#         order = order_result.scalar_one_or_none()
+#         if order:
+#             order_previous_status = order.previous_status
+#             # Revert to previous status
+#             if order.previous_status:
+#                 order.status = order.previous_status
+#                 order.previous_status = None
+#             else:
+#                 order.status = "Processing"
+#             order.updated_at = indian_time()
+#         await db.delete(entry_to_delete)
+    
+#     # 2. If not found, try FranchiseToDelivery by franchise_addresses_id
+#     if not deleted_from:
+#         franchise_result = await db.execute(
+#             select(FranchiseToDelivery).where(
+#                 FranchiseToDelivery.franchise_addresses_id == address_id
+#             )
+#         )
+#         franchise_entries = franchise_result.scalars().all()
+        
+#         for franchise_entry in franchise_entries:
+#             bag_order_check = await db.execute(
+#                 select(BagOrder).where(
+#                     BagOrder.order_id == franchise_entry.order_id,
+#                     BagOrder.bag_id == bag_id
+#                 )
+#             )
+#             if bag_order_check.scalar_one_or_none():
+#                 entry_to_delete = franchise_entry
+#                 deleted_from = "FranchiseToDelivery"
+#                 order_id = franchise_entry.order_id
+#                 break
+        
+#         if entry_to_delete:
+#             order_result = await db.execute(
+#                 select(Order).where(Order.id == order_id)
+#             )
+#             order = order_result.scalar_one_or_none()
+#             if order:
+#                 order_previous_status = order.previous_status
+#                 if order.previous_status:
+#                     order.status = order.previous_status
+#                     order.previous_status = None
+#                 else:
+#                     order.status = "Processing"
+#                 order.updated_at = indian_time()
+#             await db.delete(entry_to_delete)
+    
+#     # 3. If not found, try PickupToConsignees by pickup_addresses_id
+#     if not deleted_from:
+#         pickup_result = await db.execute(
+#             select(PickupToConsignees).where(
+#                 PickupToConsignees.pickup_addresses_id == address_id
+#             )
+#         )
+#         pickup_entries = pickup_result.scalars().all()
+        
+#         for pickup_entry in pickup_entries:
+#             bag_order_check = await db.execute(
+#                 select(BagOrder).where(
+#                     BagOrder.order_id == pickup_entry.order_id,
+#                     BagOrder.bag_id == bag_id
+#                 )
+#             )
+#             if bag_order_check.scalar_one_or_none():
+#                 entry_to_delete = pickup_entry
+#                 deleted_from = "PickupToConsignees"
+#                 order_id = pickup_entry.order_id
+#                 break
+        
+#         if entry_to_delete:
+#             order_result = await db.execute(
+#                 select(Order).where(Order.id == order_id)
+#             )
+#             order = order_result.scalar_one_or_none()
+#             if order:
+#                 order_previous_status = order.previous_status
+#                 if order.previous_status:
+#                     order.status = order.previous_status
+#                     order.previous_status = None
+#                 else:
+#                     order.status = "Processing"
+#                 order.updated_at = indian_time()
+#             await db.delete(entry_to_delete)
+    
+#     # 4. If not found, try ConsigneeToDelivery by consignee_id
+#     if not deleted_from:
+#         consignee_result = await db.execute(
+#             select(ConsigneeToDelivery).where(
+#                 ConsigneeToDelivery.consignee_id == address_id
+#             )
+#         )
+#         consignee_entries = consignee_result.scalars().all()
+        
+#         for consignee_entry in consignee_entries:
+#             bag_order_check = await db.execute(
+#                 select(BagOrder).where(
+#                     BagOrder.order_id == consignee_entry.order_id,
+#                     BagOrder.bag_id == bag_id
+#                 )
+#             )
+#             if bag_order_check.scalar_one_or_none():
+#                 entry_to_delete = consignee_entry
+#                 deleted_from = "ConsigneeToDelivery"
+#                 order_id = consignee_entry.order_id
+#                 break
+        
+#         if entry_to_delete:
+#             order_result = await db.execute(
+#                 select(Order).where(Order.id == order_id)
+#             )
+#             order = order_result.scalar_one_or_none()
+#             if order:
+#                 order_previous_status = order.previous_status
+#                 if order.previous_status:
+#                     order.status = order.previous_status
+#                     order.previous_status = None
+#                 else:
+#                     order.status = "Processing"
+#                 order.updated_at = indian_time()
+#             await db.delete(entry_to_delete)
+    
+#     if not deleted_from:
+#         raise HTTPException(
+#             status_code=404, 
+#             detail=f"No scanned entry found with address_id: {address_id} in bag: {bag_id}"
+#         )
+    
+#     # Check if all orders in the bag have no scan entries left
+#     bag_orders_result = await db.execute(
+#         select(BagOrder).where(BagOrder.bag_id == bag.id)
+#     )
+#     bag_orders = bag_orders_result.scalars().all()
+    
+#     all_orders_reverted = True
+#     orders_status = []
+    
+#     for bag_order in bag_orders:
+#         # Check if this order has any remaining scan entries
+#         has_warehouse = await db.scalar(
+#             select(func.count()).select_from(WarehouseToDelivery)
+#             .where(WarehouseToDelivery.order_id == bag_order.order_id)
+#         ) > 0
+        
+#         has_franchise = await db.scalar(
+#             select(func.count()).select_from(FranchiseToDelivery)
+#             .where(FranchiseToDelivery.order_id == bag_order.order_id)
+#         ) > 0
+        
+#         has_pickup = await db.scalar(
+#             select(func.count()).select_from(PickupToConsignees)
+#             .where(PickupToConsignees.order_id == bag_order.order_id)
+#         ) > 0
+        
+#         has_consignee = await db.scalar(
+#             select(func.count()).select_from(ConsigneeToDelivery)
+#             .where(ConsigneeToDelivery.order_id == bag_order.order_id)
+#         ) > 0
+        
+#         has_any_scan = has_warehouse or has_franchise or has_pickup or has_consignee
+        
+#         if has_any_scan:
+#             all_orders_reverted = False
+        
+#         order_detail = await db.get(Order, bag_order.order_id)
+#         orders_status.append({
+#             "order_id": bag_order.order_id,
+#             "order_number": order_detail.order_number if order_detail else "Unknown",
+#             "has_scan_entries": has_any_scan,
+#             "current_status": order_detail.status if order_detail else "Unknown"
+#         })
+    
+#     # If all orders are reverted, also revert the bag status
+#     bag_reverted = False
+#     old_bag_status = bag.status
+    
+#     if all_orders_reverted and bag.previous_status:
+#         bag.status = bag.previous_status
+#         bag.previous_status = None
+#         bag.updated_at = indian_time()
+#         bag_reverted = True
+        
+#         # Create notification for bag revert (without created_by parameter)
+#         await create_notification(
+#             db=db,
+#             title="Bag Scan Reverted",
+#             message=f"Bag {bag.bag_number} scan has been reverted from {old_bag_status} to {bag.status}",
+#             type="bag",
+#             order_id=None,
+#             bag_id=bag.id
+#         )
+    
+#     await db.commit()
+    
+#     if order:
+#         # Create notification for order revert (without created_by parameter)
+#         await create_notification(
+#             db=db,
+#             title="Order Scan Reverted",
+#             message=f"Order {order.order_number} scan has been reverted",
+#             type="order",
+#             order_id=order.id
+#         )
+    
+#     return {
+#         "success": True,
+#         "message": "Scanned entry successfully reverted",
+#         "bag_id": bag.id,
+#         "bag_number": bag.bag_number,
+#         "deleted_from": deleted_from,
+#         "deleted_address_id": address_id,
+#         "reverted_by": {
+#             "user_id": current_user.id,
+#             "user_role": role_name,
+#             "is_admin": role_name == "super_admin"
+#         },
+#         "reverted_order": {
+#             "order_id": order_id,
+#             "order_number": order.order_number if order else "Unknown",
+#             "previous_status": order_previous_status,
+#             "new_status": order.status if order else None
+#         },
+#         "bag_reverted": bag_reverted,
+#         "bag_previous_status": old_bag_status if bag_reverted else None,
+#         "bag_new_status": bag.status if bag_reverted else None,
+#         "all_orders_reverted": all_orders_reverted,
+#         "orders_in_bag_status": orders_status
+#     }
+
+
+
+
+
+
+
+
+
+
+
+
+@router.post("/bags/revert-entire-bag/{bag_id}")
+async def revert_entire_bag(
+    bag_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    bag_result = await db.execute(select(Bag).where(Bag.id == bag_id))
+    bag = bag_result.scalar_one_or_none()
+    if not bag:
+        raise HTTPException(status_code=404, detail="Bag not found")
+    role_result = await db.execute(
+        select(Role.name)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(UserRole.user_id == current_user.id))
+    role_name = role_result.scalar_one_or_none()
+    if role_name != "super_admin" and bag.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="You can only revert bags you created")
+    if not bag.previous_status:
+        raise HTTPException(status_code=400, detail="Bag has no previous status to revert to. The bag may not have been scanned yet.")
+    bag_orders_result = await db.execute(select(BagOrder).where(BagOrder.bag_id == bag.id))
+    bag_orders = bag_orders_result.scalars().all()
+    if not bag_orders:
+        raise HTTPException(status_code=404, detail="No orders found in this bag")
+    reverted_orders = []
+    failed_orders = []
+    deleted_counts = {
+        "warehouse": 0,
+        "franchise": 0,
+        "pickup": 0,
+        "consignee": 0
+    }
+    for bag_order in bag_orders:
+        try:
+            order = await db.get(Order, bag_order.order_id)
+            if not order:
+                failed_orders.append({
+                    "order_id": bag_order.order_id,
+                    "reason": "Order not found"
+                })
+                continue
+            
+            old_order_status = order.status
+            order_previous_status = order.previous_status
+            
+            # 1. Find and delete WarehouseToDelivery entries for this order
+            warehouse_result = await db.execute(
+                select(WarehouseToDelivery).where(WarehouseToDelivery.order_id == order.id)
+            )
+            warehouse_entries = warehouse_result.scalars().all()
+            for entry in warehouse_entries:
+                await db.delete(entry)
+                deleted_counts["warehouse"] += 1
+            
+            # 2. Find and delete FranchiseToDelivery entries for this order
+            franchise_result = await db.execute(
+                select(FranchiseToDelivery).where(FranchiseToDelivery.order_id == order.id)
+            )
+            franchise_entries = franchise_result.scalars().all()
+            for entry in franchise_entries:
+                await db.delete(entry)
+                deleted_counts["franchise"] += 1
+            
+            # 3. Find and delete PickupToConsignees entries for this order
+            pickup_result = await db.execute(
+                select(PickupToConsignees).where(PickupToConsignees.order_id == order.id)
+            )
+            pickup_entries = pickup_result.scalars().all()
+            for entry in pickup_entries:
+                await db.delete(entry)
+                deleted_counts["pickup"] += 1
+            
+            # 4. Find and delete ConsigneeToDelivery entries for this order
+            consignee_result = await db.execute(
+                select(ConsigneeToDelivery).where(ConsigneeToDelivery.order_id == order.id)
+            )
+            consignee_entries = consignee_result.scalars().all()
+            for entry in consignee_entries:
+                await db.delete(entry)
+                deleted_counts["consignee"] += 1
+            if order.previous_status:
+                order.status = order.previous_status
+                order.previous_status = None
+            else:
+                order.status = "Processing"
+            order.updated_at = indian_time()
+            
+            reverted_orders.append({
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "previous_status": old_order_status,
+                "reverted_to": order.status,
+                "order_previous_status": order_previous_status,
+                "deleted_entries": {
+                    "warehouse": len(warehouse_entries),
+                    "franchise": len(franchise_entries),
+                    "pickup": len(pickup_entries),
+                    "consignee": len(consignee_entries)
+                }
+            })
+            await create_notification(
+                db=db,
+                title="Order Scan Reverted",
+                message=f"Order {order.order_number} scan has been reverted from {old_order_status} to {order.status}",
+                type="order",
+                order_id=order.id
+            )
+        except Exception as e:
+            failed_orders.append({"order_id": bag_order.order_id,"reason": str(e)})
+    old_bag_status = bag.status
+    bag.status = bag.previous_status
+    bag.previous_status = None
+    bag.updated_at = indian_time()
+    await db.commit()
+    if reverted_orders:
+        reference_order_id = reverted_orders[0]["order_id"]
+        await create_notification(
+            db=db,
+            title="Entire Bag Scan Reverted",
+            message=f"Bag {bag.bag_number} has been fully reverted from {old_bag_status} to {bag.status}. {len(reverted_orders)} orders reverted. Deleted: {deleted_counts['warehouse']} warehouse, {deleted_counts['franchise']} franchise, {deleted_counts['pickup']} pickup, {deleted_counts['consignee']} consignee entries.",
+            type="bag",
+            order_id=reference_order_id
+        )
+    
+    return {
+        "success": True,
+        "message": "Entire bag scan successfully reverted",
+        "bag_id": bag.id,
+        "bag_number": bag.bag_number,
+        "bag_previous_status": old_bag_status,
+        "bag_reverted_to": bag.status,
+        "total_orders_in_bag": len(bag_orders),
+        "total_orders_reverted": len(reverted_orders),
+        "total_failed": len(failed_orders),
+        "deleted_entries_summary": deleted_counts,
+        "reverted_by": {
+            "user_id": current_user.id,
+            "user_role": role_name,
+            "is_admin": role_name == "super_admin"
+        },
+        "reverted_orders": reverted_orders,
+        "failed_orders": failed_orders,
+        "reverted_at": indian_time().isoformat()
+    }
+    
+    
+    
+ 
+ 
+ 
+    
+    
+
+
+
+
+
+
+
+
+from app.schemas.orderrevenue import RevenueRequest,RevenueSummaryResponse
+from app.services.orderrevenue import get_order_revenue_data
+@router.post("/orders/revenue-report")
+async def get_order_revenue_report(
+    payload: RevenueRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:view")),
+):
+    if payload.start_date > payload.end_date:
+        raise HTTPException(status_code=400, detail="Start date must be before or equal to end date")
+    date_diff = (payload.end_date - payload.start_date).days
+    if date_diff > 90:
+        raise HTTPException(status_code=400, detail="Date range cannot exceed 90 days")
+    revenue_data = await get_order_revenue_data(
+        db=db,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        current_user=current_user,
+        status_filter=payload.status,
+        payment_method_filter=payload.payment_method
+    )
+    return RevenueSummaryResponse(
+        success=True,
+        period={
+            "start_date": payload.start_date.isoformat(),
+            "end_date": payload.end_date.isoformat(),
+            "days": date_diff + 1},
+        
+        total_revenue=revenue_data["total_revenue"],
+        total_orders=revenue_data["total_orders"],
+        average_order_value=revenue_data["average_order_value"],
+        revenue_by_payment_method=revenue_data["revenue_by_payment_method"],
+        revenue_by_status=revenue_data["revenue_by_status"],
+        daily_breakdown=revenue_data["daily_breakdown"],
+        user_role=revenue_data["role_name"],
+        generated_at=indian_time().isoformat()
+    )
+
+
+    
