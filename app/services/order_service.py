@@ -809,6 +809,7 @@ async def process_bulk_excel_upload(
             pincode=pincode,
             barcode=generate_barcode_base64(bag_number),
             status="Processing",
+            previous_status="Processing",
             total_orders=len(orders),
             created_by=current_user.id)
         db.add(bag)

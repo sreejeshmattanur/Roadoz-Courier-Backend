@@ -153,6 +153,9 @@ class Bag(Base):
     bag_number: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
     barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default=text("'Processing'"))
+    previous_status: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)  
+    
+    
     pincode: Mapped[str | None] = mapped_column(String(10), nullable=True, index=True)
     total_orders: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     
