@@ -52,7 +52,8 @@ async def get_remittance_summary(
 ) -> RemittanceSummaryOut:
     caller_role = await _get_caller_role_name(db, current_user.id)
 
-    if caller_role == "super_admin" and franchise_id:
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if is_global and franchise_id:
         fid = franchise_id
     else:
         fid = await _resolve_franchise_id(db, current_user)
@@ -121,7 +122,8 @@ async def list_remittances(
 
     filters = []
 
-    if caller_role == "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if is_global:
         if franchise_id:
             filters.append(Remittance.franchise_id == franchise_id)
     else:
@@ -285,8 +287,8 @@ async def get_remittance(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Remittance not found")
 
     # Access control
-    caller_role = await _get_caller_role_name(db, current_user.id)
-    if caller_role != "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
         fid = await _resolve_franchise_id(db, current_user)
         if remittance.franchise_id != fid:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")

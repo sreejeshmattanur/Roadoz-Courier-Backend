@@ -40,10 +40,11 @@ async def _resolve_franchise_id(db: AsyncSession, user: User) -> str | None:
 
 
 async def _scope_franchise_id(db: AsyncSession, current_user: User, franchise_id: str | None) -> str | None:
-    if await _get_caller_role_name(db, current_user.id) == "super_admin":
-        return franchise_id
     own_franchise_id = await _resolve_franchise_id(db, current_user)
-    if franchise_id and own_franchise_id and franchise_id != own_franchise_id:
+    is_global = not own_franchise_id
+    if is_global:
+        return franchise_id
+    if franchise_id and franchise_id != own_franchise_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied for this franchise")
     return own_franchise_id
 

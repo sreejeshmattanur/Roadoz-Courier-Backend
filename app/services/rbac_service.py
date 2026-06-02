@@ -177,7 +177,9 @@ async def list_users(
 
     base_filter = []
 
-    if caller_role == "super_admin":
+    is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+
+    if is_global:
 
         if franchise_id is not None:
 
@@ -481,7 +483,7 @@ async def update_user(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
 
-    caller_role = await _get_caller_role_name(db, current_user.id)
+    is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
     if caller_role == "franchise":
         franchise = await _get_franchise_for_owner(db, current_user.id)
         if not franchise:
@@ -489,7 +491,7 @@ async def update_user(
                 status_code=status.HTTP_403_FORBIDDEN, detail="No franchise linked"
             )
         _assert_franchise_owns_user(franchise, user)
-    elif caller_role != "super_admin":
+    elif not is_global:
         # Employee or other role — can only edit users in own franchise
         if current_user.franchise_id:
             if user.franchise_id != current_user.franchise_id:
@@ -526,7 +528,7 @@ async def delete_user(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself"
         )
 
-    caller_role = await _get_caller_role_name(db, current_user.id)
+    is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
     if caller_role == "franchise":
         franchise = await _get_franchise_for_owner(db, current_user.id)
         if not franchise:
@@ -534,7 +536,7 @@ async def delete_user(
                 status_code=status.HTTP_403_FORBIDDEN, detail="No franchise linked"
             )
         _assert_franchise_owns_user(franchise, user)
-    elif caller_role != "super_admin":
+    elif not is_global:
         # Employee or other role — can only delete users in own franchise
         if current_user.franchise_id:
             if user.franchise_id != current_user.franchise_id:
@@ -747,6 +749,8 @@ async def assign_role_to_user(
 
     caller_role = await _get_caller_role_name(db, current_user.id)
 
+    is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+
     # Franchise users can only assign roles to their own employees
     if caller_role == "franchise":
         franchise = await _get_franchise_for_owner(db, current_user.id)
@@ -761,7 +765,7 @@ async def assign_role_to_user(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Cannot assign system roles",
             )
-    elif caller_role != "super_admin":
+    elif not is_global:
         # Employee or other role — can only assign within own franchise
         if not current_user.franchise_id or user.franchise_id != current_user.franchise_id:
             raise HTTPException(

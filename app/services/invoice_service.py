@@ -18,7 +18,7 @@ from app.schemas.invoice import (
     InvoiceListResponse,
     InvoiceGenerateRequest,
 )
-from app.models.order import BulkOrder
+from app.models.order import BulkOrder, indian_time
 from app.services.order_service import calculate_order_shipping_charge
 
 logger = logging.getLogger(__name__)
@@ -114,6 +114,8 @@ async def generate_invoice(
         total_amount=total_amount,
         orders_count=len(orders),
         status="issued",
+        created_at=indian_time().replace(tzinfo=None),
+        updated_at=indian_time().replace(tzinfo=None),
     )
     db.add(invoice)
     await db.flush()
@@ -124,6 +126,7 @@ async def generate_invoice(
             invoice_id=invoice.id,
             order_id=order.id,
             shipping_charge=float(order.shipping_charge),
+            created_at=indian_time().replace(tzinfo=None),
         )
         db.add(io)
 
@@ -189,6 +192,8 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
         total_amount=final_amount,
         orders_count=1,
         status="issued",
+        created_at=indian_time().replace(tzinfo=None),
+        updated_at=indian_time().replace(tzinfo=None),
     )
     db.add(invoice)
     await db.flush()
@@ -199,6 +204,7 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
         invoice_id=invoice.id,
         order_id=order.id,
         shipping_charge=final_amount,
+        created_at=indian_time().replace(tzinfo=None),
     )
     db.add(io)
 
@@ -209,7 +215,7 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
     return InvoiceOut.model_validate(invoice)
 
 
-async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) -> list[InvoiceOut]:
+async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) -> InvoiceOut:
     result = await db.execute(select(BulkOrder).where(BulkOrder.id == bulk_order_id))
     bulk_order = result.scalar_one_or_none()
     if not bulk_order:
@@ -235,52 +241,47 @@ async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) 
         )
 
     tax_rate = 18.0
-    invoice_count = (await db.execute(select(func.count()).select_from(Invoice))).scalar_one()
-    invoice_ids = []
-
-    for index, order in enumerate(orders, start=1):
-        total_amount = round(float(order.shipping_charge), 2)
-        subtotal = round(total_amount / (1 + tax_rate / 100), 2)
-        tax_amount = round(total_amount - subtotal, 2)
-        invoice = Invoice(
-            id=str(uuid.uuid4()),
-            invoice_number=str(invoice_count + index),
-            franchise_id=bulk_order.franchise_id,
-            description=f"Generated invoice for Order {order.order_number} from bulk upload {bulk_order.file_name}",
-            period_start=datetime.utcnow().date(),
-            period_end=datetime.utcnow().date(),
-            subtotal=subtotal,
-            tax_rate=tax_rate,
-            tax_amount=tax_amount,
-            total_amount=total_amount,
-            orders_count=1,
-            status="issued",
-        )
-        db.add(
-            invoice
-        )
-        await db.flush()
-        invoice_ids.append(invoice.id)
+    invoice_number = await _generate_invoice_number(db)
+    
+    total_amount = round(sum(float(order.shipping_charge) for order in orders), 2)
+    subtotal = round(total_amount / (1 + tax_rate / 100), 2)
+    tax_amount = round(total_amount - subtotal, 2)
+    
+    invoice = Invoice(
+        id=str(uuid.uuid4()),
+        invoice_number=invoice_number,
+        franchise_id=bulk_order.franchise_id,
+        description=f"Generated invoice for bulk upload {bulk_order.file_name}",
+        period_start=datetime.utcnow().date(),
+        period_end=datetime.utcnow().date(),
+        subtotal=subtotal,
+        tax_rate=tax_rate,
+        tax_amount=tax_amount,
+        total_amount=total_amount,
+        orders_count=len(orders),
+        status="issued",
+        created_at=indian_time().replace(tzinfo=None),
+        updated_at=indian_time().replace(tzinfo=None),
+    )
+    db.add(invoice)
+    await db.flush()
+    
+    for order in orders:
         db.add(
             InvoiceOrder(
                 id=str(uuid.uuid4()),
                 invoice_id=invoice.id,
                 order_id=order.id,
-                shipping_charge=total_amount,
+                shipping_charge=float(order.shipping_charge),
+                created_at=indian_time().replace(tzinfo=None),
             )
         )
 
     await db.commit()
+    await db.refresh(invoice)
 
-    invoices_result = await db.execute(
-        select(Invoice)
-        .where(Invoice.id.in_(invoice_ids))
-        .order_by(Invoice.created_at.asc())
-    )
-    invoices = invoices_result.scalars().all()
-
-    logger.info("Bulk order invoices generated: bulk_order=%s, invoices=%s", bulk_order_id, len(invoices))
-    return [InvoiceOut.model_validate(invoice) for invoice in invoices]
+    logger.info("Bulk order invoice generated: bulk_order=%s, invoice_number=%s", bulk_order_id, invoice_number)
+    return InvoiceOut.model_validate(invoice)
 
 
 # ── List invoices ─────────────────────────────────────────────────────────
@@ -297,7 +298,8 @@ async def list_invoices(
 
     filters = []
 
-    if caller_role == "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if is_global:
         if franchise_id:
             filters.append(Invoice.franchise_id == franchise_id)
     else:
@@ -342,8 +344,8 @@ async def get_invoice(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
 
     # Access control
-    caller_role = await _get_caller_role_name(db, current_user.id)
-    if caller_role != "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
         fid = await _resolve_franchise_id(db, current_user)
         if invoice.franchise_id != fid:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")

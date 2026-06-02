@@ -858,8 +858,8 @@ async def list_bulk_orders(
         query = query.where(BulkOrder.franchise_id == franchise_id)
         count_query = count_query.where(BulkOrder.franchise_id == franchise_id)
     else:
-        caller_role = await _get_caller_role_name(db, current_user.id)
-        if caller_role != "super_admin":
+        is_global = not await _resolve_franchise_id(db, current_user)
+        if not is_global:
             query = query.where(BulkOrder.created_by == current_user.id)
             count_query = count_query.where(BulkOrder.created_by == current_user.id)
             
@@ -1078,12 +1078,8 @@ async def list_orders(
     if bulk_order_id:
         filters.append(Order.bulk_order_id == bulk_order_id)
 
-    caller_role = await _get_caller_role_name(
-        db,
-        current_user.id
-    )
-
-    if caller_role != "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
 
         franchise_id = await _resolve_franchise_id(
             db,
@@ -1270,8 +1266,8 @@ async def get_order(
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
-    caller_role = await _get_caller_role_name(db, current_user.id)
-    if caller_role != "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
         franchise_id = await _resolve_franchise_id(db, current_user)
         if franchise_id:
             if order.franchise_id != franchise_id:
@@ -1813,7 +1809,8 @@ async def get_order_counts(
     current_user: User = Depends(get_current_user),):
     total_query = select(func.count(Order.id))
     status_query = (select(func.lower(Order.status),func.count(Order.id)).group_by(func.lower(Order.status)))
-    if current_user.role_name != "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
         franchise_id = await _resolve_franchise_id(db,current_user)
         if franchise_id:
             total_query = total_query.where(Order.franchise_id == franchise_id)

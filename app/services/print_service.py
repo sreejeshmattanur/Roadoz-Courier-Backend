@@ -58,7 +58,8 @@ async def _resolve_franchise_id(db: AsyncSession, user: User) -> str | None:
 
 
 async def _assert_order_access(db: AsyncSession, current_user: User, order: Order) -> None:
-    if await _get_caller_role_name(db, current_user.id) == "super_admin":
+    own_franchise_id = await _resolve_franchise_id(db, current_user)
+    if not own_franchise_id:
         return
     franchise_id = await _resolve_franchise_id(db, current_user)
     if franchise_id and order.franchise_id == franchise_id:
@@ -69,7 +70,8 @@ async def _assert_order_access(db: AsyncSession, current_user: User, order: Orde
 
 
 async def _assert_invoice_access(db: AsyncSession, current_user: User, invoice: Invoice) -> None:
-    if await _get_caller_role_name(db, current_user.id) == "super_admin":
+    own_franchise_id = await _resolve_franchise_id(db, current_user)
+    if not own_franchise_id:
         return
     franchise_id = await _resolve_franchise_id(db, current_user)
     if invoice.franchise_id != franchise_id:
@@ -77,7 +79,9 @@ async def _assert_invoice_access(db: AsyncSession, current_user: User, invoice: 
 
 
 async def _scoped_franchise_id(db: AsyncSession, current_user: User, franchise_id: str | None) -> str | None:
-    if await _get_caller_role_name(db, current_user.id) == "super_admin":
+    own_franchise_id = await _resolve_franchise_id(db, current_user)
+    is_global = not own_franchise_id
+    if is_global:
         return franchise_id
     own_franchise_id = await _resolve_franchise_id(db, current_user)
     if franchise_id and own_franchise_id and franchise_id != own_franchise_id:

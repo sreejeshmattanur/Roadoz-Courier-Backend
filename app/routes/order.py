@@ -2381,8 +2381,8 @@ async def get_today_status_orders(
     # ROLE FILTER
     # =========================================================
 
-    if role_name != "super_admin":
-
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
         filters.append(
             Order.created_by == current_user.id
         )
@@ -3078,27 +3078,28 @@ async def get_date_wise_all_status(
     role_name = role_result.scalar_one_or_none()
     today = payload.date
     order_filters = [func.date(Order.updated_at) == today]
-    if role_name != "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
         order_filters.append(Order.created_by == current_user.id)
     order_result = await db.execute(select(Order.status).where(*order_filters))
     order_statuses = [row[0] for row in order_result.all()]
     warehouse_filters = [func.date(WarehouseToDelivery.updated_at) == today]
-    if role_name != "super_admin":
+    if not is_global:
         warehouse_filters.append(WarehouseToDelivery.user_id == current_user.id)
     warehouse_result = await db.execute(select(WarehouseToDelivery.status).where(*warehouse_filters))
     warehouse_statuses = [row[0] for row in warehouse_result.all()]
     franchise_filters = [func.date(FranchiseToDelivery.updated_at) == today]
-    if role_name != "super_admin":
+    if not is_global:
         franchise_filters.append(FranchiseToDelivery.user_id == current_user.id)
     franchise_result = await db.execute(select(FranchiseToDelivery.status).where(*franchise_filters))
     franchise_statuses = [row[0] for row in franchise_result.all()]
     pickup_filters = [func.date(PickupToConsignees.updated_at) == today]
-    if role_name != "super_admin":
+    if not is_global:
         pickup_filters.append(PickupToConsignees.user_id == current_user.id)
     pickup_result = await db.execute(select(PickupToConsignees.status).where(*pickup_filters))
     pickup_statuses = [row[0] for row in pickup_result.all()]
     consignee_filters = [func.date(ConsigneeToDelivery.updated_at) == today]
-    if role_name != "super_admin":
+    if not is_global:
         consignee_filters.append(ConsigneeToDelivery.user_id == current_user.id)
     consignee_result = await db.execute(
         select(ConsigneeToDelivery.status)

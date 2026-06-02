@@ -79,7 +79,7 @@ async def generate_invoice_for_order_endpoint(
     return await generate_invoice_for_order(db, order_id)
 
 
-@router.post("/generate/bulk/{bulk_order_id}", response_model=list[InvoiceOut], status_code=201)
+@router.post("/generate/bulk/{bulk_order_id}", response_model=InvoiceOut, status_code=201)
 async def generate_invoice_for_bulk_order_endpoint(
     bulk_order_id: str,
     db: AsyncSession = Depends(get_db),
