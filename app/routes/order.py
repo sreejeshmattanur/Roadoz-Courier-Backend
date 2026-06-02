@@ -2912,86 +2912,153 @@ async def track_order_by_barcode(
 
 
 
-    
 
 
-
-
-
-
-
-
-@router.delete("/delete-scanned-order_with_mistak/{id}/{orderid}")
-async def delete_scanned_order(
-    id: str,
-    orderid:str,
+@router.delete("/delete-scanned-order_with_mistak/{order_id}")
+async def revert_order_by_id(
+    order_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),):
+    current_user: User = Depends(get_current_user),
+):
+    order_result = await db.execute(
+        select(Order).where(Order.id == order_id)
+    )
+    order = order_result.scalar_one_or_none()
     
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    # Check permission
+    role_result = await db.execute(
+        select(Role.name)
+        .join(UserRole, UserRole.role_id == Role.id)
+        .where(UserRole.user_id == current_user.id)
+    )
+    role_name = role_result.scalar_one_or_none()
+    
+    if role_name != "super_admin" and order.created_by != current_user.id:
+        raise HTTPException(
+            status_code=403, 
+            detail="You can only revert orders you created"
+        )
+    
+    # Check if order has previous status to revert to
+    if not order.previous_status:
+        raise HTTPException(
+            status_code=400, 
+            detail="Order has no previous status to revert to. The order may not have been scanned yet."
+        )
+    
+    old_status = order.status
     deleted_from = None
-    order_id = None
-    warehouse_result = await db.execute(select(WarehouseToDelivery).where(WarehouseToDelivery.warehouse_addresses_id == id,WarehouseToDelivery.order_id==orderid))
-    warehouse_entry = warehouse_result.scalar_one_or_none()
-    if warehouse_entry:
-        order_result = await db.execute(select(Order).where(Order.id == warehouse_entry.order_id))
-        order = order_result.scalar_one_or_none()
-        if order:
-           
-            order.status = order.previous_status
-            order.previous_status=OrderStatus.PROCESSING.value
-            order.updated_at = datetime.now(IST)
-        order_id = warehouse_entry.order_id
-        await db.delete(warehouse_entry)
-        deleted_from = "WarehouseToDelivery"
-    if not deleted_from:
-        franchise_result = await db.execute(select(FranchiseToDelivery).where(FranchiseToDelivery.franchise_addresses_id == id,FranchiseToDelivery.order_id==orderid))
-        franchise_entry = franchise_result.scalar_one_or_none()
-        if franchise_entry:
-            order_result = await db.execute(select(Order).where(Order.id == franchise_entry.order_id))
-            order = order_result.scalar_one_or_none()
-            if order:
-                order.status = order.previous_status
-                order.previous_status=OrderStatus.DISPATCHED.value
-                order.updated_at = datetime.now(IST)
-            order_id = franchise_entry.order_id
-            await db.delete(franchise_entry)
-            deleted_from = "FranchiseToDelivery"
-    if not deleted_from:
-        pickup_result = await db.execute(select(PickupToConsignees).where(PickupToConsignees.pickup_addresses_id == id,ConsigneeToDelivery.order_id==orderid))
+    deleted_entry_id = None
+    
+    # Determine current stage and find the corresponding entry
+    current_status = order.status
+    
+    # 1. Check if current status is Picked or starts with "Picked"
+    if current_status == OrderStatus.PICKED.value or current_status.startswith("Picked"):
+        pickup_result = await db.execute(
+            select(PickupToConsignees).where(
+                PickupToConsignees.order_id == order.id,
+                PickupToConsignees.status == current_status
+            )
+        )
         pickup_entry = pickup_result.scalar_one_or_none()
         if pickup_entry:
-            order_result = await db.execute(
-                select(Order).where(Order.id == pickup_entry.order_id))
-            order = order_result.scalar_one_or_none()
-            if order:
-                order.status = order.previous_status
-                order.previous_status=OrderStatus.PICKED.value
-                order.updated_at = datetime.now(IST)
-            order_id = pickup_entry.order_id
             await db.delete(pickup_entry)
             deleted_from = "PickupToConsignees"
-    if not deleted_from:
-        consignee_result = await db.execute(select(ConsigneeToDelivery).where(ConsigneeToDelivery.consignee_id == id,ConsigneeToDelivery.order_id==orderid))
+            deleted_entry_id = pickup_entry.id
+    
+    # 2. Check if current status starts with "Warehouse"
+    elif current_status.startswith("Warehouse"):
+        warehouse_result = await db.execute(
+            select(WarehouseToDelivery).where(
+                WarehouseToDelivery.order_id == order.id,
+                WarehouseToDelivery.status == current_status
+            )
+        )
+        warehouse_entry = warehouse_result.scalar_one_or_none()
+        if warehouse_entry:
+            await db.delete(warehouse_entry)
+            deleted_from = "WarehouseToDelivery"
+            deleted_entry_id = warehouse_entry.id
+    
+    # 3. Check if current status starts with "Dispatched"
+    elif current_status.startswith("Dispatched"):
+        franchise_result = await db.execute(
+            select(FranchiseToDelivery).where(
+                FranchiseToDelivery.order_id == order.id,
+                FranchiseToDelivery.status == current_status
+            )
+        )
+        franchise_entry = franchise_result.scalar_one_or_none()
+        if franchise_entry:
+            await db.delete(franchise_entry)
+            deleted_from = "FranchiseToDelivery"
+            deleted_entry_id = franchise_entry.id
+    
+    # 4. Check if current status is "Delivered"
+    elif current_status == OrderStatus.DELIVERED.value:
+        consignee_result = await db.execute(
+            select(ConsigneeToDelivery).where(
+                ConsigneeToDelivery.order_id == order.id,
+                ConsigneeToDelivery.status == OrderStatus.DELIVERED.value
+            )
+        )
         consignee_entry = consignee_result.scalar_one_or_none()
         if consignee_entry:
-            order_result = await db.execute(select(Order).where(Order.id == consignee_entry.order_id))
-            order = order_result.scalar_one_or_none()
-            if order:
-                order.status = order.previous_status
-                order.previous_status=OrderStatus.PROCESSING.value
-                order.updated_at = datetime.now(IST)
-            order_id = consignee_entry.order_id
             await db.delete(consignee_entry)
             deleted_from = "ConsigneeToDelivery"
+            deleted_entry_id = consignee_entry.id
+    
     if not deleted_from:
-        raise HTTPException(status_code=404,detail="No scanned data found with this ID")
+        raise HTTPException(
+            status_code=404, 
+            detail=f"No scanned entry found for current status: {current_status}"
+        )
+    
+    # Revert order status to previous status
+    order.status = order.previous_status
+    order.previous_status = None
+    order.updated_at = indian_time()
+    
     await db.commit()
+    
+    # Create notification
+    await create_notification(
+        db=db,
+        title="Order Scan Reverted",
+        message=f"Order {order.order_number} has been reverted from {old_status} to {order.status}",
+        type="order",
+        order_id=order.id
+    )
+    
     return {
         "success": True,
-        "deleted_from": deleted_from,
-        "deleted_id": id,
-        "order_id": order_id,
-    }    
+        "message": f"Order successfully reverted from {old_status} to {order.status}",
+        "order_id": order.id,
+        "order_number": order.order_number,
+        "previous_status": old_status,
+        "current_status": order.status,
+        "deleted_entry": {
+            "from_table": deleted_from,
+            "entry_id": deleted_entry_id,
+            "status": old_status
+        },
+        "reverted_by": {
+            "user_id": current_user.id,
+            "user_role": role_name,
+            "is_admin": role_name == "super_admin"
+        },
+        "reverted_at": indian_time().isoformat()
+    }
+
+
+
+    
+    
+    
     
     
     
