@@ -271,14 +271,18 @@ async def search_pickup_addresses(
     page: int = 1,
     limit: int = 10,) -> PickupAddressListResponse:
     franchise_id = await _resolve_franchise_id(db, current_user)
+    is_global = not current_user.franchise_id and not await _get_franchise_for_user(db, current_user.id)
+    
     query = select(PickupAddress)
     count_query = select(func.count()).select_from(PickupAddress)
-    if franchise_id:
-        query = query.where(PickupAddress.franchise_id == franchise_id)
-        count_query = count_query.where(PickupAddress.franchise_id == franchise_id)
-    else:
-        query = query.where(PickupAddress.user_id == current_user.id)
-        count_query = count_query.where(PickupAddress.user_id == current_user.id)
+    
+    if not is_global:
+        if franchise_id:
+            query = query.where(PickupAddress.franchise_id == franchise_id)
+            count_query = count_query.where(PickupAddress.franchise_id == franchise_id)
+        else:
+            query = query.where(PickupAddress.user_id == current_user.id)
+            count_query = count_query.where(PickupAddress.user_id == current_user.id)
     if search:
         search_filter = or_(
             PickupAddress.nickname.ilike(f"%{search}%"),
@@ -410,16 +414,18 @@ async def search_consignees(
     limit: int = 25,
 ) -> ConsigneeListResponse:
     franchise_id = await _resolve_franchise_id(db, current_user)
+    is_global = not current_user.franchise_id and not await _get_franchise_for_user(db, current_user.id)
 
     query = select(Consignee)
     count_query = select(func.count()).select_from(Consignee)
 
-    if franchise_id:
-        query = query.where(Consignee.franchise_id == franchise_id)
-        count_query = count_query.where(Consignee.franchise_id == franchise_id)
-    else:
-        query = query.where(Consignee.user_id == current_user.id)
-        count_query = count_query.where(Consignee.user_id == current_user.id)
+    if not is_global:
+        if franchise_id:
+            query = query.where(Consignee.franchise_id == franchise_id)
+            count_query = count_query.where(Consignee.franchise_id == franchise_id)
+        else:
+            query = query.where(Consignee.user_id == current_user.id)
+            count_query = count_query.where(Consignee.user_id == current_user.id)
 
     if search:
         search_filter = or_(

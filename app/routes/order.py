@@ -40,6 +40,7 @@ from app.models.role import Role
 from app.models.consigeeauth import AuthUser
 from app.utils.webconfig import check_maintenance_mode
 from app.services.order_service import (
+    _resolve_franchise_id,
     search_pickup_addresses,
     create_pickup_address,
     update_pickup_address,
@@ -3124,14 +3125,8 @@ async def get_date_wise_status_address(
     _: User = Depends(require_permission("orders:view")),
 ):
 
-    role_result = await db.execute(
-        select(Role.name)
-        .join(UserRole, UserRole.role_id == Role.id)
-        .where(UserRole.user_id == current_user.id)
-    )
-
-    role_name = role_result.scalar_one_or_none()
-
+    is_global = not await _resolve_franchise_id(db, current_user)
+    
     selected_date = payload.date
     selected_status = payload.status.strip()
     parts = selected_status.split("_")
@@ -3157,7 +3152,7 @@ async def get_date_wise_status_address(
                 )
             )
 
-        if role_name != "super_admin":
+        if not is_global:
             filters.append(
                 PickupToConsignees.user_id == current_user.id
             )
@@ -3227,7 +3222,7 @@ async def get_date_wise_status_address(
                 )
             )
 
-        if role_name != "super_admin":
+        if not is_global:
             filters.append(
                 WarehouseToDelivery.user_id == current_user.id
             )
@@ -3297,7 +3292,7 @@ async def get_date_wise_status_address(
                 )
             )
 
-        if role_name != "super_admin":
+        if not is_global:
             filters.append(
                 FranchiseToDelivery.user_id == current_user.id
             )
@@ -3417,8 +3412,8 @@ async def get_bulk_order_details(
     if not bulk_order:
         raise HTTPException(status_code=404, detail="Bulk order not found")
     
-    # Check authorization
-    if bulk_order.created_by != current_user.id and current_user.role_name != "super_admin":
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if bulk_order.created_by != current_user.id and not is_global:
         raise HTTPException(status_code=403, detail="Not authorized to view this bulk order")
     
     # Format orders with tracking history

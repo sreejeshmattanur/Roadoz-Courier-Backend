@@ -173,6 +173,23 @@ async def list_warehouses(
             func.date(WareHouseAddress.created_at) <= end_date
         )
 
+    franchise_id = current_user.franchise_id
+    is_global = False
+    
+    if not franchise_id:
+        from app.models.franchise import Franchise
+        franchise = (await db.execute(select(Franchise).where(Franchise.user_id == current_user.id))).scalar_one_or_none()
+        if franchise:
+            franchise_id = franchise.id
+        else:
+            is_global = True
+
+    if not is_global:
+        if franchise_id:
+            filters.append(WareHouseAddress.franchise_id == franchise_id)
+        else:
+            filters.append(WareHouseAddress.user_id == str(current_user.id))
+
     stmt = (
         select(WareHouseAddress)
         .where(and_(*filters))
@@ -315,11 +332,26 @@ async def get_warehouse_addresses(
     current_user: User = Depends(get_current_user),
 ):
 
-    query = select(WareHouseAddress).where(
-        WareHouseAddress.user_id == str(current_user.id)
-    )
+    franchise_id = current_user.franchise_id
+    is_global = False
+    
+    if not franchise_id:
+        from app.models.franchise import Franchise
+        franchise = (await db.execute(select(Franchise).where(Franchise.user_id == current_user.id))).scalar_one_or_none()
+        if franchise:
+            franchise_id = franchise.id
+        else:
+            is_global = True
 
+    query = select(WareHouseAddress)
     filters = []
+
+    if not is_global:
+        if franchise_id:
+            filters.append(WareHouseAddress.franchise_id == franchise_id)
+        else:
+            filters.append(WareHouseAddress.user_id == str(current_user.id))
+
     if name:
         filters.append(
             (
