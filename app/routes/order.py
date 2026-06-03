@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, status as http_status, File, UploadFile, Form
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
-
+from app.routes.analytics import _resolve_franchise_id
 from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission
 from app.models.user import User
