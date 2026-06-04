@@ -63,7 +63,7 @@ class InvoiceOrderOut(BaseModel):
 class InvoiceOut(BaseModel):
     id: str
     invoice_number: str
-    franchise_id: str
+    franchise_id: Optional[str]
     description: str
     period_start: date
     period_end: date

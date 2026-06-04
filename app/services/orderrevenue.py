@@ -41,7 +41,9 @@ async def get_order_revenue_data(
     role_name = role_result.scalar_one_or_none()
     
     # Add user filter for non-admin users
-    if role_name != "super_admin":
+    from app.dependencies.role_checker import is_global_user
+    is_global = await is_global_user(db, current_user)
+    if not is_global:
         filters.append(Order.created_by == current_user.id)
     
     # Get total revenue

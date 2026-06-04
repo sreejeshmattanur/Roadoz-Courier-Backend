@@ -2937,7 +2937,9 @@ async def revert_order_by_id(
     )
     role_name = role_result.scalar_one_or_none()
     
-    if role_name != "super_admin" and order.created_by != current_user.id:
+    from app.dependencies.role_checker import is_global_user
+    is_global = await is_global_user(db, current_user)
+    if not is_global and order.created_by != current_user.id:
         raise HTTPException(
             status_code=403, 
             detail="You can only revert orders you created"
@@ -3050,7 +3052,7 @@ async def revert_order_by_id(
         "reverted_by": {
             "user_id": current_user.id,
             "user_role": role_name,
-            "is_admin": role_name == "super_admin"
+            "is_admin": await is_global_user(db, current_user)
         },
         "reverted_at": indian_time().isoformat()
     }
@@ -3593,7 +3595,8 @@ async def get_bag_details(
     bag = result.scalar_one_or_none()
     if not bag:
         raise HTTPException(status_code=404, detail="Bag not found")
-    if bag.created_by != current_user.id and current_user.role_name != "super_admin":
+    from app.dependencies.role_checker import is_global_user
+    if bag.created_by != current_user.id and not await is_global_user(db, current_user):
         raise HTTPException(status_code=403, detail="Not authorized to view this bag")
     orders_data = []
     for bag_order in bag.bag_orders:
@@ -4259,7 +4262,7 @@ async def revert_entire_bag(
         "reverted_by": {
             "user_id": current_user.id,
             "user_role": role_name,
-            "is_admin": role_name == "super_admin"
+            "is_admin": await is_global_user(db, current_user)
         },
         "reverted_orders": reverted_orders,
         "failed_orders": failed_orders,

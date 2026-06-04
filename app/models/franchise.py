@@ -129,6 +129,7 @@ class Franchise(Base):
     employees: Mapped[list["User"]] = relationship(
         "User", foreign_keys="User.franchise_id", back_populates="franchise", lazy="selectin"
     )
+    roles = relationship("Role", back_populates="franchise", cascade="all, delete-orphan")
 
     # Helpers
     @property

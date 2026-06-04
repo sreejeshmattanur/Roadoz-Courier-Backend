@@ -17,8 +17,9 @@ router = APIRouter(prefix="/web-config",tags=["Web Configuration"])
 
 @router.post("/create_configration")
 async def create_web_configuration(data: WebConfigurationCreate,db: AsyncSession = Depends(get_db),current_user=Depends(get_current_user)):
-    if current_user.role_name != "super_admin": 
-        raise HTTPException(status_code=403,detail="Only admin can create config")
+    from app.dependencies.role_checker import is_global_user
+    if not await is_global_user(db, current_user): 
+        raise HTTPException(status_code=403,detail="Only global admins can create config")
     result = await db.execute(select(WebConfiguration))
     existing = result.scalars().first()
     if existing:
@@ -45,8 +46,9 @@ async def create_web_configuration(data: WebConfigurationCreate,db: AsyncSession
 async def get_web_configuration(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user)):
-    if current_user.role_name != "super_admin":
-        raise HTTPException(status_code=403,detail="Only admin can show ")
+    from app.dependencies.role_checker import is_global_user
+    if not await is_global_user(db, current_user):
+        raise HTTPException(status_code=403,detail="Only global admins can show config")
     result = await db.execute(
         select(WebConfiguration))
     config = result.scalars().first()
@@ -58,8 +60,9 @@ async def get_web_configuration(
     
 @router.patch("/patch_allwebcongiguration")
 async def patch_web_configuration(data: WebConfigurationPatch,db: AsyncSession = Depends(get_db),current_user=Depends(get_current_user)):
-    if current_user.role_name != "super_admin":
-        raise HTTPException(status_code=403,detail="Only admin can update")
+    from app.dependencies.role_checker import is_global_user
+    if not await is_global_user(db, current_user):
+        raise HTTPException(status_code=403,detail="Only global admins can update")
     result = await db.execute(select(WebConfiguration))
     config = result.scalars().first()
     if not config:
