@@ -300,7 +300,10 @@ async def search_pickup_addresses(
     addresses = result.scalars().all()
     return PickupAddressListResponse(
         items=[PickupAddressOut.model_validate(a) for a in addresses],
-        total=total,page=page,limit=limit,total_pages=(total + limit - 1) // limit,)
+        total=total,
+        page=page,
+        limit=limit,
+        total_pages=(total + limit - 1) // limit,)
 
 
 
@@ -379,6 +382,33 @@ async def update_pickup_address(
     return PickupAddressOut.model_validate(addr)
 
 
+# async def delete_pickup_address(
+#     db: AsyncSession, address_id: str, current_user: User
+# ) -> None:
+#     result = await db.execute(select(PickupAddress).where(PickupAddress.id == address_id))
+#     addr = result.scalar_one_or_none()
+#     if not addr:
+#         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pickup address not found")
+
+#     franchise_id = await _resolve_franchise_id(db, current_user)
+#     if franchise_id and addr.franchise_id != franchise_id:
+#         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+#     elif not franchise_id and addr.user_id != current_user.id:
+#         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
+#     # Check if address is linked to any order
+#     order_exists = await db.scalar(select(Order.id).where(Order.pickup_address_id == addr.id).limit(1))
+#     if order_exists:
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Cannot delete pickup address because it is associated with one or more orders."
+#         )
+
+#     await db.delete(addr)
+#     await db.flush()
+
+
+
 async def delete_pickup_address(
     db: AsyncSession, address_id: str, current_user: User
 ) -> None:
@@ -393,16 +423,50 @@ async def delete_pickup_address(
     elif not franchise_id and addr.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
 
-    # Check if address is linked to any order
-    order_exists = await db.scalar(select(Order.id).where(Order.pickup_address_id == addr.id).limit(1))
-    if order_exists:
+    # Get all orders using this address
+    orders = await db.execute(
+        select(Order.order_number, Order.id)
+        .where(Order.pickup_address_id == addr.id)
+        .limit(5)  # Show first 5 orders
+    )
+    order_list = orders.all()
+    
+    if order_list:
+        order_count = len(order_list)
+        order_numbers = [order[0] for order in order_list[:3]]  # Show first 3 order numbers
+        
+        error_detail = {
+            "message": "Cannot delete pickup address because it is associated with one or more orders.",
+            "order_count": order_count,
+            "affected_orders": order_numbers,
+            "suggestion": "Please delete or reassign these orders before deleting the pickup address."
+        }
+        
+        if order_count > 3:
+            error_detail["additional_orders"] = f"... and {order_count - 3} more orders"
+        
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete pickup address because it is associated with one or more orders."
+            detail=error_detail
         )
-
+    
+    # Also check BulkOrder
+    bulk_order_exists = await db.scalar(
+        select(BulkOrder.id).where(BulkOrder.pickup_address_id == addr.id).limit(1)
+    )
+    
+    if bulk_order_exists:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot delete pickup address because it is associated with one or more bulk orders."
+        )
+    
     await db.delete(addr)
-    await db.flush()
+    await db.commit()
+    
+    return None
+
+
 
 
 # ── Consignee ──────────────────────────────────────────────────────────────
@@ -1771,6 +1835,16 @@ async def delete_order(
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Order not found")
+
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
+        franchise_id = await _resolve_franchise_id(db, current_user)
+        if franchise_id:
+            if order.franchise_id != franchise_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        elif order.created_by != current_user.id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+
     try:
         await db.execute(delete(Notification).where(Notification.order_id == order.id))
         await db.execute(delete(BagOrder).where(BagOrder.order_id == order.id))

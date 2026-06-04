@@ -85,6 +85,9 @@ class PickupAddressOut(BaseModel):
 class PickupAddressListResponse(BaseModel):
     items: List[PickupAddressOut]
     total: int
+    page: int
+    limit: int
+    total_pages: int
 
 
 # ── Consignee ──────────────────────────────────────────────────────────────

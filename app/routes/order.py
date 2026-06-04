@@ -432,6 +432,7 @@ async def remove_order(
     order_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:delete"))  
 ):
     return await delete_order(
         db=db,
