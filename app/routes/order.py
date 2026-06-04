@@ -425,23 +425,7 @@ async def get_order_barcode_endpoint(
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Barcode not available")
     png_bytes = base64.b64decode(order.barcode)
     return Response(content=png_bytes, media_type="image/png")
-
-
-
-# @router.put("/{order_id}", response_model=OrderOut)
-# async def edit_order(
-#     order_id: str,
-#     data: OrderUpdate,
-#     db: AsyncSession = Depends(get_db),
-#     current_user: User = Depends(get_current_user),
-# ):
-#     return await update_order(
-#         db=db,
-#         order_id=order_id,
-#         data=data,
-#         current_user=current_user,
-#     )
-
+    
 
 @router.delete("/{order_id}/")
 async def remove_order(
@@ -449,12 +433,12 @@ async def remove_order(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-
     return await delete_order(
         db=db,
         order_id=order_id,
-        current_user=current_user,
-    )
+        current_user=current_user,)    
+    
+    
 
 
 @router.patch("/{order_id}/", response_model=OrderOut)

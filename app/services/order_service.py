@@ -6,7 +6,8 @@ from datetime import datetime
 from fastapi import Depends
 from collections import defaultdict
 
-
+from app.models.order import (Order,OrderItem,OrderPackage,BagOrder,ConsigneeToDelivery,PickupToConsignees,WarehouseToDelivery,FranchiseToDelivery)
+from app.models.notification import Notification
 
 from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission
@@ -1759,7 +1760,6 @@ async def update_order(
 
 
 
-## Delete Order API
 
 async def delete_order(
     db: AsyncSession,
@@ -1767,47 +1767,28 @@ async def delete_order(
     current_user: User
 ):
 
-    
-
-    order = (
-        await db.execute(
-            select(Order).where(Order.id == order_id)
-        )
-    ).scalar_one_or_none()
-
+    result = await db.execute(select(Order).where(Order.id == order_id))
+    order = result.scalar_one_or_none()
     if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Order not found")
+    try:
+        await db.execute(delete(Notification).where(Notification.order_id == order.id))
+        await db.execute(delete(BagOrder).where(BagOrder.order_id == order.id))
+        await db.execute(delete(OrderItem).where(OrderItem.order_id == order.id))
+        await db.execute(delete(OrderPackage).where(OrderPackage.order_id == order.id))
+        await db.execute(delete(ConsigneeToDelivery).where(ConsigneeToDelivery.order_id == order.id))
+        await db.execute(delete(PickupToConsignees).where(PickupToConsignees.order_id == order.id))
+        await db.execute(delete(WarehouseToDelivery).where(WarehouseToDelivery.order_id == order.id))
+        await db.execute(delete(FranchiseToDelivery).where(FranchiseToDelivery.order_id == order.id))
+        await db.delete(order)
+        await db.commit()
+        return {"success": True,"message": f"Order {order_id} deleted successfully"}
+    except Exception as e:
+        await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error deleting order: {str(e)}"
         )
-
-    
-
-    await db.execute(
-        delete(OrderItem).where(
-            OrderItem.order_id == order.id
-        )
-    )
-
-    await db.execute(
-        delete(OrderPackage).where(
-            OrderPackage.order_id == order.id
-        )
-    )
-
-    
-
-    await db.delete(order)
-
-    
-    await db.commit()
-
-    return {
-        "success": True,
-        "message": "Order deleted successfully"
-    }
-
-
 
 
 async def get_order_counts(
