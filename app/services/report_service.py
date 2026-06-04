@@ -185,6 +185,9 @@ async def daily_booking_report(
             "destination": order.consignee.city if order.consignee else None,
             "weight": _to_float(order.applicable_weight_kg),
             "amount": _to_float(order.shipping_charge),
+            "base_freight": _to_float(order.shipping_charge / 1.52 / 1.18) if order.shipping_charge else 0.0,
+            "fuel_surcharge": _to_float((order.shipping_charge / 1.18) - (order.shipping_charge / 1.52 / 1.18)) if order.shipping_charge else 0.0,
+            "gst_amount": _to_float(order.shipping_charge - (order.shipping_charge / 1.18)) if order.shipping_charge else 0.0,
             "status": _status_value(order.status),
         }
         for order in orders
@@ -242,6 +245,9 @@ async def customer_wise_booking_report(
             "customer": row[0],
             "bookings": row[1],
             "revenue": _to_float(row[2]),
+            "base_freight": _to_float(row[2] / 1.52 / 1.18) if row[2] else 0.0,
+            "fuel_surcharge": _to_float((row[2] / 1.18) - (row[2] / 1.52 / 1.18)) if row[2] else 0.0,
+            "gst_amount": _to_float(row[2] - (row[2] / 1.18)) if row[2] else 0.0,
             "pending_amount": _to_float(row[3]),
         }
         for row in rows
@@ -289,7 +295,14 @@ async def service_type_report(
     ).all()
 
     items = [
-        {"service_type": row[0], "total_bookings": row[1], "revenue": _to_float(row[2])}
+        {
+            "service_type": row[0],
+            "total_bookings": row[1],
+            "revenue": _to_float(row[2]),
+            "base_freight": _to_float(row[2] / 1.52 / 1.18) if row[2] else 0.0,
+            "fuel_surcharge": _to_float((row[2] / 1.18) - (row[2] / 1.52 / 1.18)) if row[2] else 0.0,
+            "gst_amount": _to_float(row[2] - (row[2] / 1.18)) if row[2] else 0.0,
+        }
         for row in rows
     ]
     total_rev = _to_float(sum(item["revenue"] for item in items))
@@ -542,6 +555,9 @@ async def franchise_settlement_report(
                 "ho_share": ho_share,
                 "franchise_share": franchise_share,
                 "net_payable": franchise_share,
+                "base_freight": _to_float(revenue / 1.52 / 1.18) if revenue else 0.0,
+                "fuel_surcharge": _to_float((revenue / 1.18) - (revenue / 1.52 / 1.18)) if revenue else 0.0,
+                "gst_amount": _to_float(revenue - (revenue / 1.18)) if revenue else 0.0,
             }
         )
 
@@ -597,7 +613,19 @@ async def monthly_revenue_analysis(db: AsyncSession, current_user: User, year: i
             filters.append(Order.franchise_id == scoped_franchise_id)
         revenue = _to_float((await db.execute(select(func.coalesce(func.sum(Order.shipping_charge), 0)).where(and_(*filters)))).scalar_one())
         growth = 0.0 if not previous_revenue else round(((revenue - previous_revenue) / previous_revenue) * 100, 2)
-        items.append({"month": calendar.month_abbr[month], "revenue": revenue, "expenses": 0.0, "profit": revenue, "growth_percent": growth})
+        base_freight = _to_float(revenue / 1.52 / 1.18) if revenue else 0.0
+        fuel_surcharge = _to_float((revenue / 1.18) - (revenue / 1.52 / 1.18)) if revenue else 0.0
+        gst_amount = _to_float(revenue - (revenue / 1.18)) if revenue else 0.0
+        items.append({
+            "month": calendar.month_abbr[month],
+            "revenue": revenue,
+            "base_freight": base_freight,
+            "fuel_surcharge": fuel_surcharge,
+            "gst_amount": gst_amount,
+            "expenses": 0.0,
+            "profit": revenue,
+            "growth_percent": growth
+        })
         previous_revenue = revenue
 
     total_revenue = _to_float(sum(item["revenue"] for item in items))

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, computed_field
 from typing import Optional, List
 from datetime import datetime
 from enum import Enum
@@ -269,6 +269,24 @@ class OrderOut(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def base_freight(self) -> float:
+        from app.utils.rate_utils import reverse_calculate_charges
+        return reverse_calculate_charges(self.shipping_charge)["base_freight"]
+
+    @computed_field
+    @property
+    def fuel_surcharge(self) -> float:
+        from app.utils.rate_utils import reverse_calculate_charges
+        return reverse_calculate_charges(self.shipping_charge)["fuel_surcharge"]
+
+    @computed_field
+    @property
+    def gst_amount(self) -> float:
+        from app.utils.rate_utils import reverse_calculate_charges
+        return reverse_calculate_charges(self.shipping_charge)["gst_amount"]
 
 
 class OrderListResponse(BaseModel):
