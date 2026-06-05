@@ -146,9 +146,7 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
     order = result.scalar_one_or_none()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
-        
-    if not order.franchise_id:
-        raise HTTPException(status_code=400, detail="Order is not linked to a franchise")
+    # Removed check for order.franchise_id to allow super admin to generate invoices
 
     # 2. Check if already invoiced
     io_result = await db.execute(select(InvoiceOrder).where(InvoiceOrder.order_id == order_id))
@@ -220,8 +218,7 @@ async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) 
     bulk_order = result.scalar_one_or_none()
     if not bulk_order:
         raise HTTPException(status_code=404, detail="Bulk order not found")
-    if not bulk_order.franchise_id:
-        raise HTTPException(status_code=400, detail="Bulk order is not linked to a franchise")
+    # Removed check for bulk_order.franchise_id to allow super admin to generate invoices
 
     orders_result = await db.execute(
         select(Order).where(

@@ -72,9 +72,9 @@ async def update_review(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):  
-    print("current_user.role_name",current_user.role_name)
-    if current_user.role_name != "super_admin":
-        raise HTTPException(status_code=403, detail="Only admin can update reviews")
+    from app.dependencies.role_checker import is_global_user
+    if not await is_global_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Only global admins can update reviews")
     query = await db.execute(select(OrderReview).where(OrderReview.id == review_id))
     review = query.scalar_one_or_none()
     if not review:
@@ -97,12 +97,12 @@ async def delete_review(
     current_user: User = Depends(get_current_user)):
     query = await db.execute(select(OrderReview).where(OrderReview.id == review_id))
     review = query.scalar_one_or_none()
-    if current_user.role_name != "super_admin":
-        raise HTTPException(status_code=403, detail="Only admin can update reviews")
     if not review:
         raise HTTPException(status_code=404,detail="Review not found")
-    if review.user_id != current_user.id:
-        raise HTTPException(status_code=403,detail="Permission denied")
+    from app.dependencies.role_checker import is_global_user
+    is_global = await is_global_user(db, current_user)
+    if not is_global and review.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only admin can delete other's reviews")
     await db.delete(review)
     await db.commit()
     return {"success": True,"message": "Review deleted successfully"}

@@ -484,6 +484,7 @@ async def update_user(
         )
 
     is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+    caller_role = await _get_caller_role_name(db, current_user.id)
     if caller_role == "franchise":
         franchise = await _get_franchise_for_owner(db, current_user.id)
         if not franchise:
@@ -529,6 +530,7 @@ async def delete_user(
         )
 
     is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+    caller_role = await _get_caller_role_name(db, current_user.id)
     if caller_role == "franchise":
         franchise = await _get_franchise_for_owner(db, current_user.id)
         if not franchise:
@@ -558,12 +560,25 @@ async def delete_user(
 # -------------------- Roles --------------------
 
 
-async def create_role(db: AsyncSession, data: RoleCreateRequest) -> RoleWithPermissionsOut:
+async def create_role(db: AsyncSession, data: RoleCreateRequest, current_user: User) -> RoleWithPermissionsOut:
     result = await db.execute(select(Role).where(Role.name == data.name))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Role already exists")
 
-    role = Role(id=str(uuid.uuid4()), name=data.name)
+    is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+    caller_role = await _get_caller_role_name(db, current_user.id)
+
+    franchise_id = None
+    if caller_role == "franchise":
+        franchise = await _get_franchise_for_owner(db, current_user.id)
+        if not franchise:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="No franchise linked")
+        franchise_id = franchise.id
+    elif not is_global:
+        if current_user.franchise_id:
+            franchise_id = current_user.franchise_id
+
+    role = Role(id=str(uuid.uuid4()), name=data.name, franchise_id=franchise_id)
     db.add(role)
     await db.flush()
 
@@ -582,12 +597,40 @@ async def create_role(db: AsyncSession, data: RoleCreateRequest) -> RoleWithPerm
 
 
 async def list_roles(
-    db: AsyncSession, page: int = 1, limit: int = 10
+    db: AsyncSession, current_user: User, page: int = 1, limit: int = 10, franchise_id: str | None = None
 ) -> RoleListResponse:
+    base_filter = [Role.name != "super_admin"]
+
+    caller_role = await _get_caller_role_name(db, current_user.id)
+    is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+
+    if is_global:
+        if franchise_id is not None:
+            if franchise_id == "none":
+                base_filter.append(Role.franchise_id.is_(None))
+            else:
+                base_filter.append(Role.franchise_id == franchise_id)
+        else:
+            base_filter.append(Role.franchise_id.is_(None))
+    elif caller_role == "franchise":
+        franchise = await _get_franchise_for_owner(db, current_user.id)
+        if not franchise:
+            return RoleListResponse(items=[], total=0, page=page, limit=limit, pages=0)
+        base_filter.append(Role.franchise_id == franchise.id)
+    else:
+        if current_user.franchise_id:
+            base_filter.append(Role.franchise_id == current_user.franchise_id)
+
+    query = select(Role)
     count_query = select(func.count()).select_from(Role)
+
+    for f in base_filter:
+        query = query.where(f)
+        count_query = count_query.where(f)
+
     total = (await db.execute(count_query)).scalar_one()
 
-    query = select(Role).order_by(Role.created_at.desc())
+    query = query.order_by(Role.created_at.desc())
     offset = (page - 1) * limit
     result = await db.execute(query.offset(offset).limit(limit))
     roles = result.scalars().all()
@@ -605,10 +648,28 @@ async def list_roles(
     )
 
 
-async def get_role(db: AsyncSession, role_id: str) -> RoleWithPermissionsOut:
+async def get_role(db: AsyncSession, role_id: str, current_user: User = None) -> RoleWithPermissionsOut:
     result = await db.execute(select(Role).where(Role.id == role_id))
     role = result.scalar_one_or_none()
     if not role:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+        
+    if current_user:
+        is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+        caller_role = await _get_caller_role_name(db, current_user.id)
+        if not is_global:
+            my_franchise_id = None
+            if caller_role == "franchise":
+                f = await _get_franchise_for_owner(db, current_user.id)
+                if f: my_franchise_id = f.id
+            else:
+                my_franchise_id = current_user.franchise_id
+            
+            if role.franchise_id != my_franchise_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only view roles belonging to your franchise")
+        
+    if role.name.lower() == "super_admin":
+        # Never allow viewing super_admin via direct API access, even if global
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
 
     perm_rows = await db.execute(
@@ -629,11 +690,28 @@ async def get_role(db: AsyncSession, role_id: str) -> RoleWithPermissionsOut:
     )
 
 
-async def update_role(db: AsyncSession, role_id: str, data: RoleUpdateRequest) -> RoleWithPermissionsOut:
+async def update_role(db: AsyncSession, role_id: str, data: RoleUpdateRequest, current_user: User = None) -> RoleWithPermissionsOut:
     result = await db.execute(select(Role).where(Role.id == role_id))
     role = result.scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+        
+    if current_user:
+        is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+        caller_role = await _get_caller_role_name(db, current_user.id)
+        if not is_global:
+            my_franchise_id = None
+            if caller_role == "franchise":
+                f = await _get_franchise_for_owner(db, current_user.id)
+                if f: my_franchise_id = f.id
+            else:
+                my_franchise_id = current_user.franchise_id
+            
+            if role.franchise_id != my_franchise_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only modify roles belonging to your franchise")
+        else:
+            if role.franchise_id is not None:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Global users cannot modify franchise roles")
 
     if role.name.lower() == "super_admin":
         raise HTTPException(
@@ -664,11 +742,28 @@ async def update_role(db: AsyncSession, role_id: str, data: RoleUpdateRequest) -
     return await get_role(db, role.id)
 
 
-async def delete_role(db: AsyncSession, role_id: str) -> dict:
+async def delete_role(db: AsyncSession, role_id: str, current_user: User = None) -> dict:
     result = await db.execute(select(Role).where(Role.id == role_id))
     role = result.scalar_one_or_none()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+        
+    if current_user:
+        is_global = not current_user.franchise_id and not await _get_franchise_for_owner(db, current_user.id)
+        caller_role = await _get_caller_role_name(db, current_user.id)
+        if not is_global:
+            my_franchise_id = None
+            if caller_role == "franchise":
+                f = await _get_franchise_for_owner(db, current_user.id)
+                if f: my_franchise_id = f.id
+            else:
+                my_franchise_id = current_user.franchise_id
+            
+            if role.franchise_id != my_franchise_id:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only delete roles belonging to your franchise")
+        else:
+            if role.franchise_id is not None:
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Global users cannot delete franchise roles")
 
     if role.name.lower() in ("super_admin", "franchise"):
         raise HTTPException(

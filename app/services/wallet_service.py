@@ -218,8 +218,9 @@ async def list_transactions(
     caller_role = await _get_caller_role_name(db, current_user.id)
 
     # Determine franchise scope
-    if caller_role == "super_admin":
-        # super_admin must have a franchise_id filter passed — handled at route level
+    from app.dependencies.role_checker import is_global_user
+    if await is_global_user(db, current_user):
+        # global user must have a franchise_id filter passed — handled at route level
         # For now, return all transactions
         franchise_id = None
     else:

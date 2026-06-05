@@ -10,8 +10,15 @@ from app.models.user_role import UserRole
 from app.models.role import Role
 from app.models.role_permission import RolePermission
 from app.models.permission import Permission
+from app.models.franchise import Franchise
 
 
+async def is_global_user(db: AsyncSession, current_user: User) -> bool:
+    if current_user.franchise_id:
+        return False
+    result = await db.execute(select(Franchise).where(Franchise.user_id == current_user.id))
+    franchise = result.scalar_one_or_none()
+    return franchise is None
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),

@@ -153,31 +153,32 @@ async def delete_user_endpoint(
 async def create_role_endpoint(
     data: RoleCreateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     __: User = Depends(require_permission("roles:create")),
 ):
-    return await create_role(db, data)
+    return await create_role(db, data, current_user)
 
 
 @router.get("/roles", response_model=RoleListResponse)
 async def list_roles_endpoint(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
+    franchise_id: Optional[str] = Query(None, description="Filter by franchise ID (super_admin only)"),
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     __: User = Depends(require_permission("roles:view")),
 ):
-    return await list_roles(db, page=page, limit=limit)
+    return await list_roles(db, current_user, page=page, limit=limit, franchise_id=franchise_id)
 
 
 @router.get("/roles/{role_id}", response_model=RoleWithPermissionsOut)
 async def get_role_endpoint(
     role_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     __: User = Depends(require_permission("roles:view")),
 ):
-    return await get_role(db, role_id)
+    return await get_role(db, role_id, current_user)
 
 
 @router.put("/roles/{role_id}", response_model=RoleWithPermissionsOut)
@@ -185,20 +186,20 @@ async def update_role_endpoint(
     role_id: str,
     data: RoleUpdateRequest,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     __: User = Depends(require_permission("roles:edit")),
 ):
-    return await update_role(db, role_id, data)
+    return await update_role(db, role_id, data, current_user)
 
 
 @router.delete("/roles/{role_id}")
 async def delete_role_endpoint(
     role_id: str,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
     __: User = Depends(require_permission("roles:delete")),
 ):
-    return await delete_role(db, role_id)
+    return await delete_role(db, role_id, current_user)
 
 
 # -------------------- Permissions --------------------

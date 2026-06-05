@@ -81,8 +81,9 @@ async def update_review(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)):
     
-    if current_user.role_name != "super_admin":
-        raise HTTPException(status_code=403, detail="Only admin can update reviews")
+    from app.dependencies.role_checker import is_global_user
+    if not await is_global_user(db, current_user):
+        raise HTTPException(status_code=403, detail="Only global admins can update reviews")
     query = await db.execute(select(ProjectReview).where(ProjectReview.id == review_id))
 
     review = query.scalar_one_or_none()

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 from typing import Optional, List
 from datetime import datetime, date
 from enum import Enum
@@ -38,6 +38,24 @@ class InvoiceOrderOut(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    @computed_field
+    @property
+    def base_freight(self) -> float:
+        from app.utils.rate_utils import reverse_calculate_charges
+        return reverse_calculate_charges(self.shipping_charge)["base_freight"]
+
+    @computed_field
+    @property
+    def fuel_surcharge(self) -> float:
+        from app.utils.rate_utils import reverse_calculate_charges
+        return reverse_calculate_charges(self.shipping_charge)["fuel_surcharge"]
+
+    @computed_field
+    @property
+    def gst_amount(self) -> float:
+        from app.utils.rate_utils import reverse_calculate_charges
+        return reverse_calculate_charges(self.shipping_charge)["gst_amount"]
+
 
 # ── Invoice ──────────────────────────────────────────────────────────────
 
@@ -45,7 +63,7 @@ class InvoiceOrderOut(BaseModel):
 class InvoiceOut(BaseModel):
     id: str
     invoice_number: str
-    franchise_id: str
+    franchise_id: Optional[str]
     description: str
     period_start: date
     period_end: date
