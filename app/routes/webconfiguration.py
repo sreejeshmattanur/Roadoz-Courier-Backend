@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.webconfiguration import (WebConfiguration,)
 from app.schemas.webconfiguration import (WebConfigurationCreate,WebConfigurationPatch,)
-from app.dependencies.role_checker import get_current_user
+from app.dependencies.role_checker import get_current_user, require_permission
+from app.models.user import User
 
 
 
@@ -16,7 +17,7 @@ router = APIRouter(prefix="/web-config",tags=["Web Configuration"])
 
 
 @router.post("/create_configration")
-async def create_web_configuration(data: WebConfigurationCreate,db: AsyncSession = Depends(get_db),current_user=Depends(get_current_user)):
+async def create_web_configuration(data: WebConfigurationCreate,db: AsyncSession = Depends(get_db),current_user=Depends(get_current_user), _: User = Depends(require_permission("webconfig:edit"))):
     from app.dependencies.role_checker import is_global_user
     if not await is_global_user(db, current_user): 
         raise HTTPException(status_code=403,detail="Only global admins can create config")
@@ -45,7 +46,8 @@ async def create_web_configuration(data: WebConfigurationCreate,db: AsyncSession
 @router.get("/get_webcongiguration")
 async def get_web_configuration(
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user)):
+    current_user=Depends(get_current_user),
+    _: User = Depends(require_permission("webconfig:view"))):
     from app.dependencies.role_checker import is_global_user
     if not await is_global_user(db, current_user):
         raise HTTPException(status_code=403,detail="Only global admins can show config")
@@ -59,7 +61,7 @@ async def get_web_configuration(
     
     
 @router.patch("/patch_allwebcongiguration")
-async def patch_web_configuration(data: WebConfigurationPatch,db: AsyncSession = Depends(get_db),current_user=Depends(get_current_user)):
+async def patch_web_configuration(data: WebConfigurationPatch,db: AsyncSession = Depends(get_db),current_user=Depends(get_current_user), _: User = Depends(require_permission("webconfig:edit"))):
     from app.dependencies.role_checker import is_global_user
     if not await is_global_user(db, current_user):
         raise HTTPException(status_code=403,detail="Only global admins can update")

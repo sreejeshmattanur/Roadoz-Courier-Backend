@@ -22,6 +22,7 @@ async def create_ticket_api(
     data: TicketCreate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("tickets:create")),
 ):
     try:
         return await create_ticket(db, data, current_user.id)
@@ -38,6 +39,7 @@ async def get_tickets(
     priority: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permission("tickets:view")),
 ):
     return await list_tickets(
         db=db,

@@ -119,6 +119,24 @@ DEFAULT_PERMISSIONS = [
     ("invoices", "generate", "Admin: generate and manage invoices"),
     # Activity Logs
     ("activity_logs", "view", "View activity logs"),
+    # Additional Missing Permissions
+    ("orders", "edit", "Edit orders"),
+    ("orders", "delete", "Delete orders"),
+    ("bags", "view", "View bags"),
+    ("bags", "manage", "Manage bags"),
+    ("warehouse", "view", "View warehouse addresses"),
+    ("warehouse", "edit", "Edit warehouse addresses"),
+    ("warehouse", "delete", "Delete warehouse addresses"),
+    ("warehouse", "create", "Create warehouse addresses"),
+    ("webconfig", "view", "View web configuration"),
+    ("webconfig", "edit", "Edit web configuration"),
+    ("reviews", "view", "View reviews"),
+    ("reviews", "create", "Create reviews"),
+    ("reviews", "edit", "Edit reviews"),
+    ("reviews", "delete", "Delete reviews"),
+    ("tickets", "view", "View tickets"),
+    ("tickets", "create", "Create tickets"),
+    ("communication", "view", "View communications"),
 ]
 
 

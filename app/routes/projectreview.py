@@ -11,7 +11,7 @@ from app.schemas.projectreview import (
     UpdateReviewSchema,
     ReviewResponseSchema
 )
-from app.dependencies.role_checker import get_current_user
+from app.dependencies.role_checker import get_current_user, require_permission
 
 
 router = APIRouter(prefix="/project/reviews", tags=["Service Reviews"])
@@ -26,7 +26,8 @@ router = APIRouter(prefix="/project/reviews", tags=["Service Reviews"])
 async def create_review(
     payload: CreateReviewSchema,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)):
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reviews:create"))):
     new_review = ProjectReview(user_id=current_user.id,rating=payload.rating,review=payload.review)
     db.add(new_review)
     await db.commit()
@@ -42,7 +43,8 @@ async def create_review(
 async def get_all_reviews(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1),
-    db: AsyncSession = Depends(get_db)):
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permission("reviews:view"))):
     skip = (page - 1) * limit
     total_query = await db.execute(select(func.count()).select_from(ProjectReview))
     total_reviews = total_query.scalar()
@@ -61,7 +63,8 @@ async def get_all_reviews(
 @router.get("/my")
 async def get_my_reviews(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)):
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reviews:view"))):
     query = await db.execute(
         select(ProjectReview).where(ProjectReview.user_id == current_user.id))
     reviews = query.scalars().all()
@@ -79,7 +82,8 @@ async def update_review(
     review_id: str,
     payload: UpdateReviewSchema,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)):
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reviews:edit"))):
     
     from app.dependencies.role_checker import is_global_user
     if not await is_global_user(db, current_user):

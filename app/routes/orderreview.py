@@ -7,7 +7,7 @@ from app.core.database  import get_db
 from app.models.order import Order
 from app.models.orderreview import OrderReview
 from app.schemas.orderreview import (CreateReviewSchema,UpdateReviewSchema,ReviewResponseSchema)
-from app.dependencies.role_checker import get_current_user
+from app.dependencies.role_checker import get_current_user, require_permission
 from app.models.user import User
 
 
@@ -18,7 +18,8 @@ router = APIRouter(prefix="/reviews", tags=["Order Reviews"])
 async def create_review(
     payload: CreateReviewSchema,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)):
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reviews:create"))):
     order_query = await db.execute(select(Order).where(Order.id == payload.order_id))
     
     order = order_query.scalar_one_or_none()
@@ -37,7 +38,8 @@ async def create_review(
 @router.get("/order/{order_id}")
 async def get_all_reviews_of_order(
     order_id: str,
-    db: AsyncSession = Depends(get_db)):
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permission("reviews:view"))):
 
     query = await db.execute(select(OrderReview).where(OrderReview.order_id == order_id))
     reviews = query.scalars().all()
@@ -49,7 +51,8 @@ async def get_all_reviews_of_order(
 @router.get("/my/reviews")
 async def get_my_reviews(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)):
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reviews:view"))):
 
     query = await db.execute(select(OrderReview).where(OrderReview.user_id == current_user.id))
 
@@ -70,7 +73,8 @@ async def update_review(
     review_id: str,
     payload: UpdateReviewSchema,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reviews:edit"))
 ):  
     from app.dependencies.role_checker import is_global_user
     if not await is_global_user(db, current_user):
@@ -94,7 +98,8 @@ async def update_review(
 async def delete_review(
     review_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)):
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("reviews:delete"))):
     query = await db.execute(select(OrderReview).where(OrderReview.id == review_id))
     review = query.scalar_one_or_none()
     if not review:
@@ -114,7 +119,8 @@ async def delete_review(
 @router.get("/{review_id}", response_model=ReviewResponseSchema)
 async def get_one_review(
     review_id: str,
-    db: AsyncSession = Depends(get_db)):
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_permission("reviews:view"))):
     query = await db.execute(select(OrderReview).where(OrderReview.id == review_id))
     review = query.scalar_one_or_none()
     if not review:
