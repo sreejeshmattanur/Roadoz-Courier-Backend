@@ -43,7 +43,7 @@ async def get_summary_endpoint(
 @router.get("", response_model=RemittanceListResponse)
 async def list_remittances_endpoint(
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=100),
     franchise_id: Optional[str] = Query(None, description="Admin: filter by franchise ID"),
     status: Optional[str] = Query(None, description="Filter by status: pending, processing, remitted"),
     db: AsyncSession = Depends(get_db),

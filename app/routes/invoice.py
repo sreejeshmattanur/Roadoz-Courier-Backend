@@ -1,5 +1,5 @@
 from typing import Optional
-
+from datetime import date
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,11 +28,28 @@ router = APIRouter(prefix="/invoices", tags=["Invoices"])
 # ── List invoices ─────────────────────────────────────────────────────────
 
 
+# @router.get("", response_model=InvoiceListResponse)
+# async def list_invoices_endpoint(
+#     page: int = Query(1, ge=1),
+#     limit: int = Query(10, ge=1, le=100),
+#     franchise_id: Optional[str] = Query(None, description="Admin: filter by franchise ID"),
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     _: User = Depends(require_permission("invoices:view")),
+# ):
+#     return await list_invoices(
+#         db, current_user,
+#         page=page, limit=limit,
+#         franchise_id=franchise_id,
+#     )
 @router.get("", response_model=InvoiceListResponse)
 async def list_invoices_endpoint(
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=100),
     franchise_id: Optional[str] = Query(None, description="Admin: filter by franchise ID"),
+    invoice_number: Optional[str] = Query(None, description="Filter by invoice number"),
+    start_date: Optional[date] = Query(None, description="Filter by start date (created_at)"),
+    end_date: Optional[date] = Query(None, description="Filter by end date (created_at)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("invoices:view")),
@@ -41,7 +58,12 @@ async def list_invoices_endpoint(
         db, current_user,
         page=page, limit=limit,
         franchise_id=franchise_id,
+        invoice_number=invoice_number,
+        start_date=start_date,
+        end_date=end_date,
     )
+
+
 
 
 # ── Get single invoice ───────────────────────────────────────────────────

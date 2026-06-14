@@ -56,7 +56,7 @@ async def recharge_wallet_endpoint(
 @router.get("/transactions", response_model=WalletTransactionListResponse)
 async def list_transactions_endpoint(
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=100),
     type: Optional[str] = Query(None, description="Filter by type: credit or debit"),
     order_id: Optional[str] = Query(None, description="Filter by order ID"),
     date_from: Optional[date] = Query(None, description="Start date (YYYY-MM-DD)"),

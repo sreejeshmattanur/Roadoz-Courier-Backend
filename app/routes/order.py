@@ -259,15 +259,34 @@ async def create_bulk_orders_endpoint(
         current_user=current_user
     )
 
+# @router.get("/bulk", response_model=BulkOrderListResponse)
+# async def list_bulk_orders_endpoint(
+#     page: int = Query(1, ge=1),
+#     limit: int = Query(10, ge=1, le=100),
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     _: User = Depends(require_permission("orders:view")),
+# ):
+#     return await list_bulk_orders(db, current_user, page=page, limit=limit)
+
 @router.get("/bulk", response_model=BulkOrderListResponse)
 async def list_bulk_orders_endpoint(
     page: int = Query(1, ge=1),
     limit: int = Query(10, ge=1, le=100),
+    start_date: Optional[date] = Query(None, description="Filter by start date (created_at)"),
+    end_date: Optional[date] = Query(None, description="Filter by end date (created_at)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
 ):
-    return await list_bulk_orders(db, current_user, page=page, limit=limit)
+    return await list_bulk_orders(
+        db, current_user, 
+        page=page, 
+        limit=limit,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
 
 
 # @router.get("", response_model=OrderListResponse)

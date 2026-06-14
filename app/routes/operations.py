@@ -31,7 +31,7 @@ async def create_expense_endpoint(data: ExpenseCreate, db: AsyncSession = Depend
 @router.get("/expenses")
 async def list_expenses_endpoint(
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=100),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
@@ -50,7 +50,7 @@ async def create_cash_voucher_endpoint(data: CashVoucherCreate, db: AsyncSession
 @router.get("/cash-vouchers")
 async def list_cash_vouchers_endpoint(
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=100),
     date_from: date | None = Query(None),
     date_to: date | None = Query(None),
     franchise_id: str | None = Query(None),
@@ -69,7 +69,7 @@ async def create_attendance_endpoint(data: AttendanceCreate, db: AsyncSession = 
 @router.get("/attendance")
 async def list_attendance_endpoint(
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=100),
     attendance_date: date | None = Query(None),
     franchise_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -87,7 +87,7 @@ async def create_manifest_endpoint(data: ManifestCreate, db: AsyncSession = Depe
 @router.get("/manifests")
 async def list_manifests_endpoint(
     page: int = Query(1, ge=1),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(10, ge=1, le=100),
     manifest_date: date | None = Query(None),
     franchise_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),

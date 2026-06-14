@@ -13,7 +13,7 @@ router = APIRouter(prefix="/activity-logs", tags=["Activity Logs"])
 @router.get("", response_model=ActivityLogListResponse)
 async def list_activity_logs(
     page: int = Query(1, ge=1, description="Page number"),
-    limit: int = Query(50, ge=1, le=100, description="Items per page"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("activity_logs:view")),

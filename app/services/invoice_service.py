@@ -284,17 +284,65 @@ async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) 
 # ── List invoices ─────────────────────────────────────────────────────────
 
 
+# async def list_invoices(
+#     db: AsyncSession,
+#     current_user: User,
+#     page: int = 1,
+#     limit: int = 25,
+#     franchise_id: str | None = None,
+# ) -> InvoiceListResponse:
+#     caller_role = await _get_caller_role_name(db, current_user.id)
+
+#     filters = []
+
+#     is_global = not await _resolve_franchise_id(db, current_user)
+#     if is_global:
+#         if franchise_id:
+#             filters.append(Invoice.franchise_id == franchise_id)
+#     else:
+#         fid = await _resolve_franchise_id(db, current_user)
+#         if not fid:
+#             raise HTTPException(
+#                 status_code=status.HTTP_400_BAD_REQUEST,
+#                 detail="No franchise linked to this user",
+#             )
+#         filters.append(Invoice.franchise_id == fid)
+
+#     query = select(Invoice).order_by(Invoice.created_at.desc())
+#     count_query = select(func.count()).select_from(Invoice)
+
+#     for f in filters:
+#         query = query.where(f)
+#         count_query = count_query.where(f)
+
+#     total = (await db.execute(count_query)).scalar_one()
+#     offset = (page - 1) * limit
+#     result = await db.execute(query.offset(offset).limit(limit))
+#     invoices = result.scalars().all()
+
+#     return InvoiceListResponse(
+#         items=[InvoiceOut.model_validate(i) for i in invoices],
+#         total=total,
+#         page=page,
+#         limit=limit,
+#         pages=math.ceil(total / limit) if total > 0 else 0,
+#     )
+
+
 async def list_invoices(
     db: AsyncSession,
     current_user: User,
     page: int = 1,
     limit: int = 25,
     franchise_id: str | None = None,
+    invoice_number: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> InvoiceListResponse:
     caller_role = await _get_caller_role_name(db, current_user.id)
 
     filters = []
-
+    
     is_global = not await _resolve_franchise_id(db, current_user)
     if is_global:
         if franchise_id:
@@ -306,20 +354,26 @@ async def list_invoices(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No franchise linked to this user",
             )
-        filters.append(Invoice.franchise_id == fid)
-
+        filters.append(Invoice.franchise_id == fid)    
+    if invoice_number:
+        filters.append(Invoice.invoice_number.ilike(f"%{invoice_number}%"))    
+    if start_date:
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        filters.append(Invoice.created_at >= start_datetime)
+    
+    if end_date:
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+        filters.append(Invoice.created_at <= end_datetime)
     query = select(Invoice).order_by(Invoice.created_at.desc())
     count_query = select(func.count()).select_from(Invoice)
 
     for f in filters:
         query = query.where(f)
         count_query = count_query.where(f)
-
     total = (await db.execute(count_query)).scalar_one()
     offset = (page - 1) * limit
     result = await db.execute(query.offset(offset).limit(limit))
     invoices = result.scalars().all()
-
     return InvoiceListResponse(
         items=[InvoiceOut.model_validate(i) for i in invoices],
         total=total,
@@ -327,6 +381,8 @@ async def list_invoices(
         limit=limit,
         pages=math.ceil(total / limit) if total > 0 else 0,
     )
+
+
 
 
 # ── Get single invoice ───────────────────────────────────────────────────

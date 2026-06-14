@@ -2,7 +2,7 @@ import math
 import uuid
 import logging
 import csv
-from datetime import datetime
+from datetime import datetime,date,time
 from fastapi import Depends
 from collections import defaultdict
 
@@ -914,17 +914,54 @@ async def process_bulk_excel_upload(
 
 
 
+# async def list_bulk_orders(
+#     db: AsyncSession,
+#     current_user: User,
+#     page: int = 1,
+#     limit: int = 10,
+# ) -> BulkOrderListResponse:
+#     franchise_id = await _resolve_franchise_id(db, current_user)
+    
+#     query = select(BulkOrder)
+#     count_query = select(func.count()).select_from(BulkOrder)
+    
+#     if franchise_id:
+#         query = query.where(BulkOrder.franchise_id == franchise_id)
+#         count_query = count_query.where(BulkOrder.franchise_id == franchise_id)
+#     else:
+#         is_global = not await _resolve_franchise_id(db, current_user)
+#         if not is_global:
+#             query = query.where(BulkOrder.created_by == current_user.id)
+#             count_query = count_query.where(BulkOrder.created_by == current_user.id)
+            
+#     total = (await db.execute(count_query)).scalar_one()
+#     offset = (page - 1) * limit
+#     result = await db.execute(query.order_by(BulkOrder.created_at.desc()).offset(offset).limit(limit))
+#     bulk_orders = result.scalars().all()
+    
+#     return BulkOrderListResponse(
+#         items=[BulkOrderOut.model_validate(b) for b in bulk_orders],
+#         total=total,
+#         page=page,
+#         limit=limit,
+#         pages=math.ceil(total / limit) if total > 0 else 0,
+#     )
+
+
+
+
+
 async def list_bulk_orders(
     db: AsyncSession,
     current_user: User,
     page: int = 1,
     limit: int = 10,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> BulkOrderListResponse:
     franchise_id = await _resolve_franchise_id(db, current_user)
-    
     query = select(BulkOrder)
     count_query = select(func.count()).select_from(BulkOrder)
-    
     if franchise_id:
         query = query.where(BulkOrder.franchise_id == franchise_id)
         count_query = count_query.where(BulkOrder.franchise_id == franchise_id)
@@ -933,22 +970,33 @@ async def list_bulk_orders(
         if not is_global:
             query = query.where(BulkOrder.created_by == current_user.id)
             count_query = count_query.where(BulkOrder.created_by == current_user.id)
-            
+
+    
+    if start_date:
+        start_datetime = datetime.combine(start_date, time.min)
+        query = query.where(BulkOrder.created_at >= start_datetime)
+        count_query = count_query.where(BulkOrder.created_at >= start_datetime)
+    
+    if end_date:
+        end_datetime = datetime.combine(end_date, time.max)
+        query = query.where(BulkOrder.created_at <= end_datetime)
+        count_query = count_query.where(BulkOrder.created_at <= end_datetime)    
     total = (await db.execute(count_query)).scalar_one()
     offset = (page - 1) * limit
-    result = await db.execute(query.order_by(BulkOrder.created_at.desc()).offset(offset).limit(limit))
+    result = await db.execute(
+        query.order_by(BulkOrder.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     bulk_orders = result.scalars().all()
-    
     return BulkOrderListResponse(
         items=[BulkOrderOut.model_validate(b) for b in bulk_orders],
         total=total,
         page=page,
         limit=limit,
         pages=math.ceil(total / limit) if total > 0 else 0,
+
     )
-
-
-
 
 
 

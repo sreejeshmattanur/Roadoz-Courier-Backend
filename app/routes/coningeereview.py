@@ -89,7 +89,7 @@ async def approve_product_review(
           
     
 @router.get("/all-reviews/",response_model=ProductReviewPaginationResponse)
-async def get_all_reviews(page: int = Query(1, ge=1),limit: int = Query(5, ge=1),db: AsyncSession = Depends(get_db)):
+async def get_all_reviews(page: int = Query(1, ge=1),limit: int = Query(10, ge=1),db: AsyncSession = Depends(get_db)):
     total_result = await db.execute(select(func.count(ProductReview.id)))
     total_reviews = total_result.scalar()
     skip = (page - 1) * limit
