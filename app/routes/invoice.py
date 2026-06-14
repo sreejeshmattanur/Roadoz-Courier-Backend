@@ -16,6 +16,7 @@ from app.services.invoice_service import (
     generate_invoice,
     list_invoices,
     get_invoice,
+    get_invoice_by_order,
     mark_paid,
     generate_invoice_for_order,
     generate_invoice_for_bulk_order,
@@ -54,6 +55,17 @@ async def get_invoice_endpoint(
     _: User = Depends(require_permission("invoices:view")),
 ):
     return await get_invoice(db, invoice_id, current_user)
+
+
+@router.get("/getinvoicebyorderid/{order_id}", response_model=InvoiceOut)
+async def get_invoice_endpoint(
+    order_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("invoices:view")),
+):
+    return await get_invoice_by_order(db, order_id, current_user)
+
 
 
 # ── Generate invoice (admin) ─────────────────────────────────────────────

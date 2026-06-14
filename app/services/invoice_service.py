@@ -352,6 +352,22 @@ async def get_invoice(
 
     return InvoiceOut.model_validate(invoice)
 
+async def get_invoice_by_order(db: AsyncSession, order_id: str, current_user: User) -> InvoiceOut:
+    result = await db.execute(select(InvoiceOrder).where(InvoiceOrder.order_id == order_id))
+    invoice_order = result.scalar_one_or_none()
+    if not invoice_order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No invoice found for order ID: {order_id}")
+    result = await db.execute(select(Invoice).where(Invoice.id == invoice_order.invoice_id))
+    invoice = result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+    is_global = not await _resolve_franchise_id(db, current_user)
+    if not is_global:
+        fid = await _resolve_franchise_id(db, current_user)
+        if invoice.franchise_id != fid:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+    return InvoiceOut.model_validate(invoice)
+
 
 # ── Mark invoice as paid (admin) ─────────────────────────────────────────
 

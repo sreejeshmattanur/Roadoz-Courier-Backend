@@ -3102,6 +3102,288 @@ async def get_date_wise_all_status(
 
 from app.schemas.order import TodayStatusRequestDatewise
 
+# @router.post("/orders/date-wise-status-address")
+# async def get_date_wise_status_address(
+#     payload: TodayStatusRequestDatewise,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user),
+#     _: User = Depends(require_permission("orders:view")),
+# ):
+
+#     is_global = not await _resolve_franchise_id(db, current_user)
+    
+#     selected_date = payload.date
+#     selected_status = payload.status.strip()
+#     parts = selected_status.split("_")
+#     base_status = parts[0]
+#     has_suffix = len(parts) > 1
+
+#     addresses = []
+#     if base_status == "Picked":
+
+#         filters = [
+#             func.date(PickupToConsignees.updated_at) == selected_date,
+#         ]
+
+#         if has_suffix:
+#             filters.append(
+#                 PickupToConsignees.status == selected_status
+#             )
+#         else:
+#             filters.append(
+#                 or_(
+#                     PickupToConsignees.status == "Picked",
+#                     PickupToConsignees.status.like("Picked\\_%")
+#                 )
+#             )
+
+#         if not is_global:
+#             filters.append(
+#                 PickupToConsignees.user_id == current_user.id
+#             )
+
+#         result = await db.execute(
+#             select(
+#                 PickupAddress.id,
+#                 PickupAddress.nickname,
+#                 PickupAddress.contact_name,
+#                 PickupAddress.phone,
+#                 PickupAddress.email,
+#                 PickupAddress.address_line_1,
+#                 PickupAddress.address_line_2,
+#                 PickupAddress.city,
+#                 PickupAddress.state,
+#                 PickupAddress.country,
+#                 PickupAddress.pincode,
+#                 PickupToConsignees.status.label("status_found"),
+#             )
+#             .join(
+#                 PickupAddress,
+#                 PickupAddress.id == PickupToConsignees.pickup_addresses_id
+#             )
+#             .where(*filters)
+#             .distinct()
+#         )
+
+#         rows = result.all()
+
+#         for row in rows:
+#             addresses.append({
+#                 "type": "pickup_address",
+#                 "id": row.id,
+#                 "nickname": row.nickname,
+#                 "contact_name": row.contact_name,
+#                 "phone": row.phone,
+#                 "email": row.email,
+#                 "address_line_1": row.address_line_1,
+#                 "address_line_2": row.address_line_2,
+#                 "city": row.city,
+#                 "state": row.state,
+#                 "country": row.country,
+#                 "pincode": row.pincode,
+#                 "status": row.status_found,
+#                 "date": str(selected_date),
+#             })
+
+#     # =========================================================
+#     # WAREHOUSE STATUS
+#     # =========================================================
+
+#     elif base_status == "Warehouse":
+
+#         filters = [
+#             func.date(WarehouseToDelivery.updated_at) == selected_date,
+#         ]
+
+#         if has_suffix:
+#             filters.append(
+#                 WarehouseToDelivery.status == selected_status
+#             )
+#         else:
+#             filters.append(
+#                 or_(
+#                     WarehouseToDelivery.status == "Warehouse",
+#                     WarehouseToDelivery.status.like("Warehouse\\_%")
+#                 )
+#             )
+
+#         if not is_global:
+#             filters.append(
+#                 WarehouseToDelivery.user_id == current_user.id
+#             )
+
+#         result = await db.execute(
+#             select(
+#                 WareHouseAddress.id,
+#                 WareHouseAddress.nickname,
+#                 WareHouseAddress.contact_name,
+#                 WareHouseAddress.phone,
+#                 WareHouseAddress.email,
+#                 WareHouseAddress.address_line_1,
+#                 WareHouseAddress.address_line_2,
+#                 WareHouseAddress.city,
+#                 WareHouseAddress.state,
+#                 WareHouseAddress.country,
+#                 WareHouseAddress.pincode,
+#                 WarehouseToDelivery.status.label("status_found"),
+#             )
+#             .join(
+#                 WareHouseAddress,
+#                 WareHouseAddress.id == WarehouseToDelivery.warehouse_addresses_id
+#             )
+#             .where(*filters)
+#             .distinct()
+#         )
+
+#         rows = result.all()
+
+#         for row in rows:
+#             addresses.append({
+#                 "type": "warehouse_address",
+#                 "id": row.id,
+#                 "nickname": row.nickname,
+#                 "contact_name": row.contact_name,
+#                 "phone": row.phone,
+#                 "email": row.email,
+#                 "address_line_1": row.address_line_1,
+#                 "address_line_2": row.address_line_2,
+#                 "city": row.city,
+#                 "state": row.state,
+#                 "country": row.country,
+#                 "pincode": row.pincode,
+#                 "status": row.status_found,
+#                 "date": str(selected_date),
+#             })
+
+#     # =========================================================
+#     # DISPATCHED STATUS
+#     # =========================================================
+
+#     elif base_status == "Dispatched":
+
+#         filters = [
+#             func.date(FranchiseToDelivery.updated_at) == selected_date,
+#         ]
+
+#         if has_suffix:
+#             filters.append(
+#                 FranchiseToDelivery.status == selected_status
+#             )
+#         else:
+#             filters.append(
+#                 or_(
+#                     FranchiseToDelivery.status == "Dispatched",
+#                     FranchiseToDelivery.status.like("Dispatched\\_%")
+#                 )
+#             )
+
+#         if not is_global:
+#             filters.append(
+#                 FranchiseToDelivery.user_id == current_user.id
+#             )
+
+#         result = await db.execute(
+#             select(
+#                 Franchise.id,
+#                 Franchise.name,
+#                 Franchise.phone,
+#                 Franchise.email,
+#                 Franchise.address,
+#                 Franchise.pincode,
+#                 Franchise.proposed_location,
+#                 Franchise.detailed_business_address,
+#                 Franchise.nearby_landmark,
+#                 FranchiseToDelivery.status.label("status_found"),
+#             )
+#             .join(
+#                 Franchise,
+#                 Franchise.id == FranchiseToDelivery.franchise_addresses_id
+#             )
+#             .where(*filters)
+#             .distinct()
+#         )
+
+#         rows = result.all()
+
+#         for row in rows:
+#             addresses.append({
+#                 "type": "franchise_address",
+#                 "id": row.id,
+#                 "name": row.name,
+#                 "phone": row.phone,
+#                 "email": row.email,
+#                 "address": row.address,
+#                 "pincode": row.pincode,
+#                 "proposed_location": row.proposed_location,
+#                 "detailed_business_address": row.detailed_business_address,
+#                 "nearby_landmark": row.nearby_landmark,
+#                 "status": row.status_found,
+#                 "date": str(selected_date),
+#             })
+
+#     # =========================================================
+#     # INVALID STATUS
+#     # =========================================================
+
+#     else:
+#         return {
+#             "success": False,
+#             "message": "Invalid status",
+#             "supported_statuses": [
+#                 "Picked",
+#                 "Warehouse",
+#                 "Dispatched"
+#             ]
+#         }
+
+#     # =========================================================
+#     # FINAL RESPONSE
+#     # =========================================================
+
+#     return {
+#         "success": True,
+#         "date": str(selected_date),
+#         "searched_status": selected_status,
+#         "total_unique_addresses": len(addresses),
+#         "addresses": addresses,
+#     }
+
+
+async def get_address_from_pincode_sync(pincode: str):
+    try:
+        url = f"https://api.postalpincode.in/pincode/{pincode}"
+        response = httpx.get(url, timeout=10.0)
+        if response.status_code == 200:
+            data = response.json()
+            # Check if API returned success
+            if data and data[0].get("Status") == "Success":
+                post_office = data[0].get("PostOffice", [])
+                if post_office:
+                    office = post_office[0]
+                    city = office.get("District", "")       
+                    state = office.get("State", "")         
+                    country = office.get("Country", "India")
+                    return city, state, country
+    except Exception as e:
+        print(f"India Post API Error: {e}")
+    try:
+        url = f"https://nominatim.openstreetmap.org/search?q={pincode}&countrycodes=in&format=json&addressdetails=1&limit=1"
+        headers = {"User-Agent": "courier-app", "Accept-Language": "en"}
+        response = httpx.get(url, headers=headers, timeout=10.0)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if data and len(data) > 0:
+                address = data[0].get("address", {})
+                city = address.get("city") or address.get("town") or address.get("village") or ""
+                state = address.get("state") or ""
+                country = address.get("country") 
+                return city, state, "India"  
+    except Exception as e:
+        print(f"Nominatim Error: {e}")
+    return "", "", "India"
+
+
 @router.post("/orders/date-wise-status-address")
 async def get_date_wise_status_address(
     payload: TodayStatusRequestDatewise,
@@ -3109,7 +3391,6 @@ async def get_date_wise_status_address(
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
 ):
-
     is_global = not await _resolve_franchise_id(db, current_user)
     
     selected_date = payload.date
@@ -3120,15 +3401,12 @@ async def get_date_wise_status_address(
 
     addresses = []
     if base_status == "Picked":
-
         filters = [
             func.date(PickupToConsignees.updated_at) == selected_date,
         ]
 
         if has_suffix:
-            filters.append(
-                PickupToConsignees.status == selected_status
-            )
+            filters.append(PickupToConsignees.status == selected_status)
         else:
             filters.append(
                 or_(
@@ -3138,9 +3416,7 @@ async def get_date_wise_status_address(
             )
 
         if not is_global:
-            filters.append(
-                PickupToConsignees.user_id == current_user.id
-            )
+            filters.append(PickupToConsignees.user_id == current_user.id)
 
         result = await db.execute(
             select(
@@ -3157,10 +3433,7 @@ async def get_date_wise_status_address(
                 PickupAddress.pincode,
                 PickupToConsignees.status.label("status_found"),
             )
-            .join(
-                PickupAddress,
-                PickupAddress.id == PickupToConsignees.pickup_addresses_id
-            )
+            .join(PickupAddress, PickupAddress.id == PickupToConsignees.pickup_addresses_id)
             .where(*filters)
             .distinct()
         )
@@ -3171,12 +3444,12 @@ async def get_date_wise_status_address(
             addresses.append({
                 "type": "pickup_address",
                 "id": row.id,
-                "nickname": row.nickname,
+                "name": row.nickname,
                 "contact_name": row.contact_name,
                 "phone": row.phone,
                 "email": row.email,
                 "address_line_1": row.address_line_1,
-                "address_line_2": row.address_line_2,
+                "address_line_2": row.address_line_2 or "",
                 "city": row.city,
                 "state": row.state,
                 "country": row.country,
@@ -3184,21 +3457,13 @@ async def get_date_wise_status_address(
                 "status": row.status_found,
                 "date": str(selected_date),
             })
-
-    # =========================================================
-    # WAREHOUSE STATUS
-    # =========================================================
-
     elif base_status == "Warehouse":
-
         filters = [
             func.date(WarehouseToDelivery.updated_at) == selected_date,
         ]
 
         if has_suffix:
-            filters.append(
-                WarehouseToDelivery.status == selected_status
-            )
+            filters.append(WarehouseToDelivery.status == selected_status)
         else:
             filters.append(
                 or_(
@@ -3208,9 +3473,7 @@ async def get_date_wise_status_address(
             )
 
         if not is_global:
-            filters.append(
-                WarehouseToDelivery.user_id == current_user.id
-            )
+            filters.append(WarehouseToDelivery.user_id == current_user.id)
 
         result = await db.execute(
             select(
@@ -3227,10 +3490,7 @@ async def get_date_wise_status_address(
                 WareHouseAddress.pincode,
                 WarehouseToDelivery.status.label("status_found"),
             )
-            .join(
-                WareHouseAddress,
-                WareHouseAddress.id == WarehouseToDelivery.warehouse_addresses_id
-            )
+            .join(WareHouseAddress, WareHouseAddress.id == WarehouseToDelivery.warehouse_addresses_id)
             .where(*filters)
             .distinct()
         )
@@ -3241,12 +3501,12 @@ async def get_date_wise_status_address(
             addresses.append({
                 "type": "warehouse_address",
                 "id": row.id,
-                "nickname": row.nickname,
+                "name": row.nickname,
                 "contact_name": row.contact_name,
                 "phone": row.phone,
                 "email": row.email,
                 "address_line_1": row.address_line_1,
-                "address_line_2": row.address_line_2,
+                "address_line_2": row.address_line_2 or "",
                 "city": row.city,
                 "state": row.state,
                 "country": row.country,
@@ -3254,21 +3514,13 @@ async def get_date_wise_status_address(
                 "status": row.status_found,
                 "date": str(selected_date),
             })
-
-    # =========================================================
-    # DISPATCHED STATUS
-    # =========================================================
-
     elif base_status == "Dispatched":
-
         filters = [
             func.date(FranchiseToDelivery.updated_at) == selected_date,
         ]
 
         if has_suffix:
-            filters.append(
-                FranchiseToDelivery.status == selected_status
-            )
+            filters.append(FranchiseToDelivery.status == selected_status)
         else:
             filters.append(
                 or_(
@@ -3278,9 +3530,7 @@ async def get_date_wise_status_address(
             )
 
         if not is_global:
-            filters.append(
-                FranchiseToDelivery.user_id == current_user.id
-            )
+            filters.append(FranchiseToDelivery.user_id == current_user.id)
 
         result = await db.execute(
             select(
@@ -3295,10 +3545,65 @@ async def get_date_wise_status_address(
                 Franchise.nearby_landmark,
                 FranchiseToDelivery.status.label("status_found"),
             )
-            .join(
-                Franchise,
-                Franchise.id == FranchiseToDelivery.franchise_addresses_id
+            .join(Franchise, Franchise.id == FranchiseToDelivery.franchise_addresses_id)
+            .where(*filters)
+            .distinct()
+        )
+
+        rows = result.all()
+
+        for row in rows:
+            city, state, country = await get_address_from_pincode_sync(row.pincode)
+            addresses.append({
+                "type": "franchise_address",
+                "id": row.id,
+                "name": row.name,
+                "contact_name": row.name,
+                "phone": row.phone,
+                "email": row.email,
+                "address_line_1": row.address or "",
+                "address_line_2": row.proposed_location or "",
+                "city": city or "",
+                "state": state or "",
+                "country": country or "India",
+                "pincode": row.pincode,
+                "status": row.status_found,
+                "date": str(selected_date),
+            })
+
+    elif base_status == "Delivered":
+        filters = [
+            func.date(ConsigneeToDelivery.updated_at) == selected_date,
+        ]
+
+        if has_suffix:
+            filters.append(ConsigneeToDelivery.status == selected_status)
+        else:
+            filters.append(
+                or_(
+                    ConsigneeToDelivery.status == "Delivered",
+                    ConsigneeToDelivery.status.like("Delivered\\_%")
+                )
             )
+
+        if not is_global:
+            filters.append(ConsigneeToDelivery.user_id == current_user.id)
+
+        result = await db.execute(
+            select(
+                Consignee.id,
+                Consignee.name,
+                Consignee.mobile,
+                Consignee.alternate_mobile,
+                Consignee.email,
+                Consignee.address_line_1,
+                Consignee.address_line_2,
+                Consignee.city,
+                Consignee.state,
+                Consignee.pincode,
+                ConsigneeToDelivery.status.label("status_found"),
+            )
+            .join(Consignee, Consignee.id == ConsigneeToDelivery.consignee_id)
             .where(*filters)
             .distinct()
         )
@@ -3307,24 +3612,21 @@ async def get_date_wise_status_address(
 
         for row in rows:
             addresses.append({
-                "type": "franchise_address",
+                "type": "delivery_address",
                 "id": row.id,
                 "name": row.name,
-                "phone": row.phone,
-                "email": row.email,
-                "address": row.address,
+                "contact_name": row.name,
+                "phone": row.mobile,
+                "email": row.email or "",
+                "address_line_1": row.address_line_1,
+                "address_line_2": row.address_line_2 or "",
+                "city": row.city,
+                "state": row.state,
+                "country": "India",  # Default country for consignee
                 "pincode": row.pincode,
-                "proposed_location": row.proposed_location,
-                "detailed_business_address": row.detailed_business_address,
-                "nearby_landmark": row.nearby_landmark,
                 "status": row.status_found,
                 "date": str(selected_date),
             })
-
-    # =========================================================
-    # INVALID STATUS
-    # =========================================================
-
     else:
         return {
             "success": False,
@@ -3332,14 +3634,10 @@ async def get_date_wise_status_address(
             "supported_statuses": [
                 "Picked",
                 "Warehouse",
-                "Dispatched"
+                "Dispatched",
+                "Delivered"
             ]
         }
-
-    # =========================================================
-    # FINAL RESPONSE
-    # =========================================================
-
     return {
         "success": True,
         "date": str(selected_date),
@@ -3347,6 +3645,8 @@ async def get_date_wise_status_address(
         "total_unique_addresses": len(addresses),
         "addresses": addresses,
     }
+
+
 
 
 
