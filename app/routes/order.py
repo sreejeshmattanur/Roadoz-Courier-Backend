@@ -275,6 +275,7 @@ async def list_bulk_orders_endpoint(
     limit: int = Query(10, ge=1, le=100),
     start_date: Optional[date] = Query(None, description="Filter by start date (created_at)"),
     end_date: Optional[date] = Query(None, description="Filter by end date (created_at)"),
+    file_name: Optional[str] = Query(None, description="Filter by file name (partial match)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _: User = Depends(require_permission("orders:view")),
@@ -285,6 +286,7 @@ async def list_bulk_orders_endpoint(
         limit=limit,
         start_date=start_date,
         end_date=end_date,
+        file_name=file_name,
     )
 
 
@@ -3685,9 +3687,147 @@ from app.schemas.bulkorders import BulkOrderDetailResponse,OrderPackageResponse,
 
 # ============= API 1: Get Bulk Order Details with All Orders =============
 
-@router.get("/bulk-order/{bulk_order_id}", response_model=BulkOrderDetailResponse)
+# @router.get("/bulk-order/{bulk_order_id}", response_model=BulkOrderDetailResponse)
+# async def get_bulk_order_details(
+#     bulk_order_id: str,
+#     db: AsyncSession = Depends(get_db),
+#     current_user: User = Depends(get_current_user)
+# ):
+#     stmt = (
+#         select(BulkOrder)
+#         .options(
+#             selectinload(BulkOrder.orders)
+#             .selectinload(Order.items),
+#             selectinload(BulkOrder.orders)
+#             .selectinload(Order.packages),
+#             selectinload(BulkOrder.orders)
+#             .selectinload(Order.pickup_address),
+#             selectinload(BulkOrder.orders)
+#             .selectinload(Order.consignee),
+#             selectinload(BulkOrder.orders)
+#             .selectinload(Order.warehouse_addresses)
+#             .selectinload(OrderWarehouseAddress.warehouse_address),
+#             selectinload(BulkOrder.orders)
+#             .selectinload(Order.franchise_addresses)
+#             .selectinload(OrderFranchiseAddress.franchise_address),
+#         )
+#         .where(BulkOrder.id == bulk_order_id)
+#     )
+    
+#     result = await db.execute(stmt)
+#     bulk_order = result.scalar_one_or_none()
+    
+#     if not bulk_order:
+#         raise HTTPException(status_code=404, detail="Bulk order not found")
+    
+#     is_global = not await _resolve_franchise_id(db, current_user)
+#     if bulk_order.created_by != current_user.id and not is_global:
+#         raise HTTPException(status_code=403, detail="Not authorized to view this bulk order")
+    
+#     # Format orders with tracking history
+#     orders_data = []
+#     for order in bulk_order.orders:
+#         # Get tracking history for each order
+#         tracking_history = await get_order_tracking_history(db, order.id)
+        
+#         orders_data.append({
+#             "id": order.id,
+#             "order_number": order.order_number,
+#             "order_type": order.order_type,
+#             "status": order.status,
+#             "previous_status": order.previous_status,
+#             "payment_method": order.payment_method,
+#             "cod_amount": float(order.cod_amount) if order.cod_amount else None,
+#             "to_pay_amount": float(order.to_pay_amount) if order.to_pay_amount else None,
+#             "order_value": float(order.order_value),
+#             "total_weight_kg": float(order.total_weight_kg),
+#             "total_vol_weight_kg": float(order.total_vol_weight_kg),
+#             "applicable_weight_kg": float(order.applicable_weight_kg),
+#             "total_boxes": order.total_boxes,
+#             "shipping_charge": float(order.shipping_charge),
+#             "gst_number": order.gst_number,
+#             "eway_bill_number": order.eway_bill_number,
+#             "created_at": order.created_at.isoformat(),
+#             "updated_at": order.updated_at.isoformat(),
+#             "pickup_address": {
+#                 "name": order.pickup_address.contact_name if order.pickup_address else None,
+#                 "phone": order.pickup_address.phone if order.pickup_address else None,
+#                 "address": order.pickup_address.address_line_1 if order.pickup_address else None,
+#                 "pincode": order.pickup_address.pincode if order.pickup_address else None,
+#                 "city": order.pickup_address.city if order.pickup_address else None,
+#                 "state": order.pickup_address.state if order.pickup_address else None
+#             } if order.pickup_address else None,
+#             "delivery_address": {
+#                 "name": order.consignee.name if order.consignee else None,
+#                 "phone": order.consignee.mobile if order.consignee else None,
+#                 "address": order.consignee.address_line_1 if order.consignee else None,
+#                 "pincode": order.consignee.pincode if order.consignee else None,
+#                 "city": order.consignee.city if order.consignee else None,
+#                 "state": order.consignee.state if order.consignee else None
+#             } if order.consignee else None,
+#             "warehouse_addresses": [
+#                 {
+#                     "name": wa.warehouse_address.nickname if wa.warehouse_address else None,
+#                     "pincode": wa.warehouse_address.pincode if wa.warehouse_address else None,
+#                     "city": wa.warehouse_address.city if wa.warehouse_address else None
+#                 } for wa in order.warehouse_addresses if wa.warehouse_address
+#             ],
+#             "franchise_addresses": [
+#                 {
+#                     "name": fa.franchise_address.name if fa.franchise_address else None,
+#                     "pincode": fa.franchise_address.pincode if fa.franchise_address else None
+#                 } for fa in order.franchise_addresses if fa.franchise_address
+#             ],
+#             "items": [
+#                 {
+#                     "product_name": item.product_name,
+#                     "sku": item.sku,
+#                     "unit_price": float(item.unit_price),
+#                     "qty": item.qty,
+#                     "total": float(item.total)
+#                 } for item in order.items
+#             ],
+#             "packages": [
+#                 {
+#                     "count": pkg.count,
+#                     "length_cm": float(pkg.length_cm),
+#                     "breadth_cm": float(pkg.breadth_cm),
+#                     "height_cm": float(pkg.height_cm),
+#                     "vol_weight_kg": float(pkg.vol_weight_kg),
+#                     "physical_weight_kg": float(pkg.physical_weight_kg)
+#                 } for pkg in order.packages
+#             ],
+#             "tracking_history": tracking_history
+#         })
+    
+#     return {
+#         "id": bulk_order.id,
+#         "file_name": bulk_order.file_name,
+#         "order_type": bulk_order.order_type,
+#         "status": bulk_order.status,
+#         "total_orders": bulk_order.total_orders,
+#         "successful_orders": bulk_order.successful_orders,
+#         "failed_orders": bulk_order.failed_orders,
+#         "created_by": bulk_order.created_by,
+#         "franchise_id": bulk_order.franchise_id,
+#         "created_at": bulk_order.created_at.isoformat(),
+#         "updated_at": bulk_order.updated_at.isoformat(),
+#         "orders": orders_data
+#     }
+from uuid import UUID
+
+from typing import Optional
+from math import ceil
+
+
+@router.get("/bulk-order/{bulk_order_id}", response_model=dict)
 async def get_bulk_order_details(
     bulk_order_id: str,
+    barcode: Optional[str] = Query(None, description="Filter by order barcode"),
+    consignee_name: Optional[str] = Query(None, description="Filter by consignee name"),
+    payment_method: Optional[str] = Query(None, description="Filter by payment method (COD, Prepaid, To Pay)"),
+    page: int = Query(1, ge=1, description="Page number"),
+    limit: int = Query(10, ge=1, le=100, description="Items per page"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -3709,7 +3849,7 @@ async def get_bulk_order_details(
             .selectinload(Order.franchise_addresses)
             .selectinload(OrderFranchiseAddress.franchise_address),
         )
-        .where(BulkOrder.id == bulk_order_id)
+        .where(BulkOrder.id == str(bulk_order_id))
     )
     
     result = await db.execute(stmt)
@@ -3722,9 +3862,29 @@ async def get_bulk_order_details(
     if bulk_order.created_by != current_user.id and not is_global:
         raise HTTPException(status_code=403, detail="Not authorized to view this bulk order")
     
+    # Filter orders based on query parameters
+    filtered_orders = []
+    for order in bulk_order.orders:
+        # Apply barcode filter
+        if barcode and barcode.lower() not in (order.order_number or "").lower():
+            continue
+        if consignee_name and consignee_name.lower() not in (order.consignee.name if order.consignee else "").lower():
+            continue
+        # Apply payment method filter
+        if payment_method and payment_method.lower() != (order.payment_method or "").lower():
+            continue
+        
+        filtered_orders.append(order)
+    
+    # Calculate pagination
+    total_orders = len(filtered_orders)
+    total_pages = ceil(total_orders / limit) if total_orders > 0 else 1
+    offset = (page - 1) * limit
+    paginated_orders = filtered_orders[offset:offset + limit]
+    
     # Format orders with tracking history
     orders_data = []
-    for order in bulk_order.orders:
+    for order in paginated_orders:
         # Get tracking history for each order
         tracking_history = await get_order_tracking_history(db, order.id)
         
@@ -3745,23 +3905,40 @@ async def get_bulk_order_details(
             "shipping_charge": float(order.shipping_charge),
             "gst_number": order.gst_number,
             "eway_bill_number": order.eway_bill_number,
+            "barcode": order.barcode,
             "created_at": order.created_at.isoformat(),
             "updated_at": order.updated_at.isoformat(),
             "pickup_address": {
-                "name": order.pickup_address.contact_name if order.pickup_address else None,
+                "id": order.pickup_address.id if order.pickup_address else None,
+                "nickname": order.pickup_address.nickname if order.pickup_address else None,
+                "contact_name": order.pickup_address.contact_name if order.pickup_address else None,
                 "phone": order.pickup_address.phone if order.pickup_address else None,
-                "address": order.pickup_address.address_line_1 if order.pickup_address else None,
+                "email": order.pickup_address.email if order.pickup_address else None,
+                "address_line_1": order.pickup_address.address_line_1 if order.pickup_address else None,
+                "address_line_2": order.pickup_address.address_line_2 if order.pickup_address else None,
                 "pincode": order.pickup_address.pincode if order.pickup_address else None,
                 "city": order.pickup_address.city if order.pickup_address else None,
-                "state": order.pickup_address.state if order.pickup_address else None
+                "state": order.pickup_address.state if order.pickup_address else None,
+                "country": order.pickup_address.country if order.pickup_address else None,
+                "active": order.pickup_address.active if order.pickup_address else None,
+                "is_primary": order.pickup_address.is_primary if order.pickup_address else None,
+                "created_at": order.pickup_address.created_at.isoformat() if order.pickup_address else None,
+                "updated_at": order.pickup_address.updated_at.isoformat() if order.pickup_address else None
             } if order.pickup_address else None,
-            "delivery_address": {
+            "consignee": {
+                "id": order.consignee.id if order.consignee else None,
                 "name": order.consignee.name if order.consignee else None,
-                "phone": order.consignee.mobile if order.consignee else None,
-                "address": order.consignee.address_line_1 if order.consignee else None,
+                "mobile": order.consignee.mobile if order.consignee else None,
+                "alternate_mobile": order.consignee.alternate_mobile if order.consignee else None,
+                "email": order.consignee.email if order.consignee else None,
+                "address_line_1": order.consignee.address_line_1 if order.consignee else None,
+                "address_line_2": order.consignee.address_line_2 if order.consignee else None,
                 "pincode": order.consignee.pincode if order.consignee else None,
                 "city": order.consignee.city if order.consignee else None,
-                "state": order.consignee.state if order.consignee else None
+                "state": order.consignee.state if order.consignee else None,
+                "status": order.consignee.status if order.consignee else None,
+                "created_at": order.consignee.created_at.isoformat() if order.consignee else None,
+                "updated_at": order.consignee.updated_at.isoformat() if order.consignee else None
             } if order.consignee else None,
             "warehouse_addresses": [
                 {
@@ -3778,6 +3955,7 @@ async def get_bulk_order_details(
             ],
             "items": [
                 {
+                    "id": item.id,
                     "product_name": item.product_name,
                     "sku": item.sku,
                     "unit_price": float(item.unit_price),
@@ -3787,6 +3965,7 @@ async def get_bulk_order_details(
             ],
             "packages": [
                 {
+                    "id": pkg.id,
                     "count": pkg.count,
                     "length_cm": float(pkg.length_cm),
                     "breadth_cm": float(pkg.breadth_cm),
@@ -3795,9 +3974,16 @@ async def get_bulk_order_details(
                     "physical_weight_kg": float(pkg.physical_weight_kg)
                 } for pkg in order.packages
             ],
+            "weight_summary": {
+                "applicable_weight_kg": float(order.applicable_weight_kg),
+                "total_boxes": order.total_boxes,
+                "total_weight_kg": float(order.total_weight_kg),
+                "total_vol_weight_kg": float(order.total_vol_weight_kg)
+            },
             "tracking_history": tracking_history
         })
     
+    # Return response with pagination AND bulk order date fields
     return {
         "id": bulk_order.id,
         "file_name": bulk_order.file_name,
@@ -3808,12 +3994,16 @@ async def get_bulk_order_details(
         "failed_orders": bulk_order.failed_orders,
         "created_by": bulk_order.created_by,
         "franchise_id": bulk_order.franchise_id,
-        "created_at": bulk_order.created_at.isoformat(),
-        "updated_at": bulk_order.updated_at.isoformat(),
-        "orders": orders_data
+        "bulk_order_created_at": bulk_order.created_at.isoformat(),
+        "bulk_order_updated_at": bulk_order.updated_at.isoformat(),
+        "items": orders_data,
+        "pagination": {
+            "total": total_orders,
+            "page": page,
+            "limit": limit,
+            "pages": total_pages
+        }
     }
-
-
 # ============= Helper Function for Tracking History =============
 
 

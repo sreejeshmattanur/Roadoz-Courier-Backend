@@ -5,7 +5,7 @@ import csv
 from datetime import datetime,date,time
 from fastapi import Depends
 from collections import defaultdict
-
+from sqlalchemy.orm import selectinload
 from app.models.order import (Order,OrderItem,OrderPackage,BagOrder,ConsigneeToDelivery,PickupToConsignees,WarehouseToDelivery,FranchiseToDelivery)
 from app.models.notification import Notification
 
@@ -958,6 +958,7 @@ async def list_bulk_orders(
     limit: int = 10,
     start_date: date | None = None,
     end_date: date | None = None,
+    file_name: str | None = None,
 ) -> BulkOrderListResponse:
     franchise_id = await _resolve_franchise_id(db, current_user)
     query = select(BulkOrder)
@@ -980,7 +981,11 @@ async def list_bulk_orders(
     if end_date:
         end_datetime = datetime.combine(end_date, time.max)
         query = query.where(BulkOrder.created_at <= end_datetime)
-        count_query = count_query.where(BulkOrder.created_at <= end_datetime)    
+        count_query = count_query.where(BulkOrder.created_at <= end_datetime)
+
+    if file_name:
+        query = query.where(BulkOrder.file_name.ilike(f"%{file_name}%"))
+        count_query = count_query.where(BulkOrder.file_name.ilike(f"%{file_name}%"))
     total = (await db.execute(count_query)).scalar_one()
     offset = (page - 1) * limit
     result = await db.execute(
@@ -1004,16 +1009,141 @@ async def list_bulk_orders(
 
 
 
+# async def duplicate_order(
+#     db: AsyncSession,
+#     order_id: str,
+#     current_user: User
+# ) -> OrderOut:
+
+#     existing_order = (
+#         await db.execute(
+#             select(Order)
+#             .where(Order.id == order_id)
+#         )
+#     ).scalar_one_or_none()
+
+#     if not existing_order:
+#         raise HTTPException(
+#             status_code=status.HTTP_404_NOT_FOUND,
+#             detail="Order not found"
+#         )
+
+#     existing_items = (
+#         await db.execute(
+#             select(OrderItem).where(OrderItem.order_id == order_id)
+#         )
+#     ).scalars().all()
+
+#     existing_packages = (
+#         await db.execute(
+#             select(OrderPackage).where(OrderPackage.order_id == order_id)
+#         )
+#     ).scalars().all()
+
+#     new_order_number = await _generate_order_number(db)
+
+#     franchise_id = await _resolve_franchise_id(db, current_user)
+
+#     new_order = Order(
+#         id=str(uuid.uuid4()),
+#         order_number=new_order_number,
+#         order_type=existing_order.order_type,
+#         pickup_address_id=existing_order.pickup_address_id,
+#         consignee_id=existing_order.consignee_id,
+#         warehouse_addresses_id=existing_order.warehouse_addresses_id,
+#         payment_method=existing_order.payment_method,
+#         cod_amount=existing_order.cod_amount,
+#         to_pay_amount=existing_order.to_pay_amount,
+#         rov=existing_order.rov,
+#         order_value=existing_order.order_value,
+#         gst_number=existing_order.gst_number,
+#         eway_bill_number=existing_order.eway_bill_number,
+#         shipping_charge=existing_order.shipping_charge,
+#         total_boxes=existing_order.total_boxes,
+#         total_weight_kg=existing_order.total_weight_kg,
+#         total_vol_weight_kg=existing_order.total_vol_weight_kg,
+#         applicable_weight_kg=existing_order.applicable_weight_kg,
+#         status=OrderStatus.PROCESSING,
+#         created_by=current_user.id,
+#         franchise_id=franchise_id,
+#     )
+
+#     new_order.barcode = generate_barcode_base64(new_order_number)
+
+#     db.add(new_order)
+#     await db.flush()
+
+#     for item in existing_items:
+#         new_item = OrderItem(
+#             id=str(uuid.uuid4()),
+#             order_id=new_order.id,
+#             product_name=item.product_name,
+#             sku=item.sku,
+#             unit_price=item.unit_price,
+#             qty=item.qty,
+#             total=item.total,
+#         )
+#         db.add(new_item)
+
+#     for pkg in existing_packages:
+#         new_pkg = OrderPackage(
+#             id=str(uuid.uuid4()),
+#             order_id=new_order.id,
+#             count=pkg.count,
+#             length_cm=pkg.length_cm,
+#             breadth_cm=pkg.breadth_cm,
+#             height_cm=pkg.height_cm,
+#             vol_weight_kg=pkg.vol_weight_kg,
+#             physical_weight_kg=pkg.physical_weight_kg,
+#         )
+#         db.add(new_pkg)
+
+#     await db.flush()
+
+#     if new_order.shipping_charge > 0 and franchise_id:
+#         await debit_for_order(
+#             db,
+#             franchise_id,
+#             new_order.id,
+#             new_order.shipping_charge
+#         )
+
+#     await db.refresh(new_order)
+#     await db.refresh(
+#         new_order,
+#         attribute_names=[
+#             "items",
+#             "packages",
+#             "pickup_address",
+#             "consignee"
+#         ]
+#     )
+
+#     return _build_order_out(new_order)
+
+
+# from sqlalchemy import select
+# import uuid
+
 async def duplicate_order(
     db: AsyncSession,
     order_id: str,
     current_user: User
 ) -> OrderOut:
 
+    # Get existing order with all relationships
     existing_order = (
         await db.execute(
             select(Order)
             .where(Order.id == order_id)
+            .options(
+                selectinload(Order.warehouse_addresses),
+                selectinload(Order.franchise_addresses),
+                selectinload(Order.items),
+                selectinload(Order.packages),
+                selectinload(Order.pickup_address),
+                selectinload(Order.consignee)
+            )
         )
     ).scalar_one_or_none()
 
@@ -1023,6 +1153,7 @@ async def duplicate_order(
             detail="Order not found"
         )
 
+    # Get existing items and packages
     existing_items = (
         await db.execute(
             select(OrderItem).where(OrderItem.order_id == order_id)
@@ -1039,13 +1170,14 @@ async def duplicate_order(
 
     franchise_id = await _resolve_franchise_id(db, current_user)
 
+    # Create new order - REMOVED the non-existent field
     new_order = Order(
         id=str(uuid.uuid4()),
         order_number=new_order_number,
         order_type=existing_order.order_type,
         pickup_address_id=existing_order.pickup_address_id,
         consignee_id=existing_order.consignee_id,
-        warehouse_addresses_id=existing_order.warehouse_addresses_id,
+        # warehouse_addresses_id - REMOVED (field doesn't exist)
         payment_method=existing_order.payment_method,
         cod_amount=existing_order.cod_amount,
         to_pay_amount=existing_order.to_pay_amount,
@@ -1058,7 +1190,7 @@ async def duplicate_order(
         total_weight_kg=existing_order.total_weight_kg,
         total_vol_weight_kg=existing_order.total_vol_weight_kg,
         applicable_weight_kg=existing_order.applicable_weight_kg,
-        status=OrderStatus.PROCESSING,
+        status=OrderStatus.PROCESSING.value,  # Use .value if OrderStatus is Enum
         created_by=current_user.id,
         franchise_id=franchise_id,
     )
@@ -1068,6 +1200,7 @@ async def duplicate_order(
     db.add(new_order)
     await db.flush()
 
+    # Duplicate items
     for item in existing_items:
         new_item = OrderItem(
             id=str(uuid.uuid4()),
@@ -1080,6 +1213,7 @@ async def duplicate_order(
         )
         db.add(new_item)
 
+    # Duplicate packages
     for pkg in existing_packages:
         new_pkg = OrderPackage(
             id=str(uuid.uuid4()),
@@ -1093,8 +1227,29 @@ async def duplicate_order(
         )
         db.add(new_pkg)
 
+    # Duplicate warehouse addresses (if any and if model exists)
+    if hasattr(existing_order, 'warehouse_addresses') and existing_order.warehouse_addresses:
+        for wh in existing_order.warehouse_addresses:
+            new_warehouse = OrderWarehouseAddress(
+                id=str(uuid.uuid4()),
+                order_id=new_order.id,
+                warehouse_address_id=wh.warehouse_address_id,
+            )
+            db.add(new_warehouse)
+
+    # Duplicate franchise addresses (if any and if model exists)
+    if hasattr(existing_order, 'franchise_addresses') and existing_order.franchise_addresses:
+        for fr in existing_order.franchise_addresses:
+            new_franchise = OrderFranchiseAddress(
+                id=str(uuid.uuid4()),
+                order_id=new_order.id,
+                franchise_address_id=fr.franchise_address_id,
+            )
+            db.add(new_franchise)
+
     await db.flush()
 
+    # Debit shipping charge if applicable
     if new_order.shipping_charge > 0 and franchise_id:
         await debit_for_order(
             db,
@@ -1103,18 +1258,30 @@ async def duplicate_order(
             new_order.shipping_charge
         )
 
+    # Refresh the new order with all relationships
     await db.refresh(new_order)
-    await db.refresh(
-        new_order,
-        attribute_names=[
-            "items",
-            "packages",
-            "pickup_address",
-            "consignee"
-        ]
-    )
+    
+    # Refresh specific attributes
+    try:
+        await db.refresh(
+            new_order,
+            attribute_names=[
+                "items",
+                "packages",
+                "pickup_address",
+                "consignee",
+                "warehouse_addresses",
+                "franchise_addresses"
+            ]
+        )
+    except:
+        # If some attributes don't exist, refresh without them
+        await db.refresh(new_order)
 
     return _build_order_out(new_order)
+
+
+
 
 
 # async def list_orders(
