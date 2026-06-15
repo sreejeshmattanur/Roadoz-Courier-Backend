@@ -114,20 +114,20 @@ async def list_warehouses(
     total_pages = (total + limit - 1) // limit
 
     return {
-        "pagination": {
-            "page": page,
-            "limit": limit,
-            "total": total,
-            "total_pages": total_pages,
-            "has_next": page < total_pages,
-            "has_prev": page > 1,
-        },
+        # "pagination": {
+        #     "page": page,
+        #     "limit": limit,
+        #     "total": total,
+        #     "total_pages": total_pages,
+        #     "has_next": page < total_pages,
+        #     "has_prev": page > 1,
+        # },
 
-        "filters": {
-            "search": search,
-            "start_date": start_date,
-            "end_date": end_date,
-        },
+        # "filters": {
+        #     "search": search,
+        #     "start_date": start_date,
+        #     "end_date": end_date,
+        # },
 
         "data": [
             {
@@ -149,7 +149,11 @@ async def list_warehouses(
             }
 
             for warehouse in warehouses
-        ]
+        ],
+        "page": page,
+        "limit": limit,
+        "total": total,
+        "total_pages": total_pages,
     }
 
 
