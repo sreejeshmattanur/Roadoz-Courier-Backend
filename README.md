@@ -289,3 +289,4 @@ server {
 - Enable HTTPS in production (Let's Encrypt / AWS ACM)
 - Set `DEBUG=False` in production
 - Restrict `ALLOWED_ORIGINS` to your frontend domain
+# test
