@@ -1,9 +1,9 @@
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
-sqlalchemy==2.0.30
+sqlalchemy==2.0.51
 alembic==1.13.1
 aiosqlite==0.20.0
-aiomysql==0.2.0
+aiomysql @ git+https://github.com/aio-libs/aiomysql.git
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.9
