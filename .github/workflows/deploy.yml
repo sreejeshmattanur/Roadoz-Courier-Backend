@@ -19,10 +19,17 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/Roadoz-Courier-Backend
+            git fetch origin staging
+            CHANGED=$(git diff HEAD origin/staging -- requirements.txt | wc -l)
             git pull origin staging
             source venv/bin/activate
-            grep -v "aiomysql" requirements.txt | pip install -r /dev/stdin -q
-            python -c "import aiomysql; exit(0 if not aiomysql.__version__.startswith('0.2') else 1)" || pip install "aiomysql @ git+https://github.com/aio-libs/aiomysql.git@1aa9cfcba" --no-deps -q
+            if [ "$CHANGED" -gt "0" ]; then
+              echo "requirements.txt changed, running pip install..."
+              grep -v "aiomysql" requirements.txt | pip install -r /dev/stdin -q
+              python -c "import aiomysql; exit(0 if not aiomysql.__version__.startswith('0.2') else 1)" || pip install "aiomysql @ git+https://github.com/aio-libs/aiomysql.git@1aa9cfcba" --no-deps -q
+            else
+              echo "requirements.txt unchanged, skipping pip install."
+            fi
             sudo systemctl restart roadoz
             sudo systemctl is-active roadoz
 
@@ -38,9 +45,16 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
             cd ~/Roadoz-Courier-Backend
+            git fetch origin main
+            CHANGED=$(git diff HEAD origin/main -- requirements.txt | wc -l)
             git pull origin main
             source venv/bin/activate
-            grep -v "aiomysql" requirements.txt | pip install -r /dev/stdin -q
-            python -c "import aiomysql; exit(0 if not aiomysql.__version__.startswith('0.2') else 1)" || pip install "aiomysql @ git+https://github.com/aio-libs/aiomysql.git@1aa9cfcba" --no-deps -q
+            if [ "$CHANGED" -gt "0" ]; then
+              echo "requirements.txt changed, running pip install..."
+              grep -v "aiomysql" requirements.txt | pip install -r /dev/stdin -q
+              python -c "import aiomysql; exit(0 if not aiomysql.__version__.startswith('0.2') else 1)" || pip install "aiomysql @ git+https://github.com/aio-libs/aiomysql.git@1aa9cfcba" --no-deps -q
+            else
+              echo "requirements.txt unchanged, skipping pip install."
+            fi
             sudo systemctl restart roadoz
             sudo systemctl is-active roadoz
