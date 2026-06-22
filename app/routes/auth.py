@@ -59,6 +59,9 @@ async def refresh_token(request: RefreshTokenRequest, http_request: Request):
         "permissions": list(payload.get("permissions") or []),
         "franchise_id": payload.get("franchise_id"),
         "franchise_code": payload.get("franchise_code"),
+        "warehouse_id": payload.get("warehouse_id"),
+        "warehouse_nickname": payload.get("warehouse_nickname"),
+        "warehouse_contact_name": payload.get("warehouse_contact_name"),
     }
 
     franchise_info = None
@@ -68,6 +71,15 @@ async def refresh_token(request: RefreshTokenRequest, http_request: Request):
             id=payload["franchise_id"],
             franchise_code=payload.get("franchise_code", ""),
             name=payload.get("role", ""),
+        )
+
+    warehouse_info = None
+    if payload.get("warehouse_id"):
+        from app.schemas.auth import WarehouseInfo
+        warehouse_info = WarehouseInfo(
+            id=payload["warehouse_id"],
+            nickname=payload.get("warehouse_nickname", ""),
+            contact_name=payload.get("warehouse_contact_name", ""),
         )
 
     return TokenResponse(
@@ -80,6 +92,7 @@ async def refresh_token(request: RefreshTokenRequest, http_request: Request):
         ),
         permissions=list(payload.get("permissions") or []),
         franchise=franchise_info,
+        warehouse=warehouse_info,
     )
 
 

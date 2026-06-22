@@ -7,7 +7,8 @@ class WarehouseCreate(BaseModel):
     nickname: str = Field(..., min_length=1, max_length=100)
     contact_name: str = Field(..., min_length=1, max_length=150)
     phone: str = Field(..., min_length=1, max_length=20)
-    email: Optional[str] = Field(None, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=6)
     address_line_1: str = Field(..., min_length=1, max_length=500)
     address_line_2: Optional[str] = None
     pincode: str = Field(..., min_length=1, max_length=10)

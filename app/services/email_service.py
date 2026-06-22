@@ -23,7 +23,7 @@ def send_otp_email(to_email: str, otp: str):
     """
 
     message = MIMEMultipart()
-    message["From"] = settings.SMTP_USERNAME
+    message["From"] =  f"Roadoz-Courier <{settings.SMTP_USERNAME}>"
     message["To"] = to_email
     message["Subject"] = subject
     message.attach(MIMEText(body, "plain"))

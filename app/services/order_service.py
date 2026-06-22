@@ -254,6 +254,8 @@ def _build_order_out(order: Order) -> OrderOut:
         shipping_charge=float(order.shipping_charge),
         gst_number=order.gst_number,
         eway_bill_number=order.eway_bill_number,
+        insurance=order.insurance,         
+        regional_area=order.regional_area, 
         barcode=order.barcode,
         status=order.status,
         created_by=order.created_by,
@@ -607,6 +609,12 @@ async def delete_consignee(
     await db.flush()
 
 
+
+async def generate_sku(db: AsyncSession) -> str:
+    count = await db.scalar(select(func.count(OrderItem.id)))
+    return f"SKU-{count + 1}"
+
+
 # ── Order ──────────────────────────────────────────────────────────────────
 from app.services.notification_service import create_notification
 
@@ -668,6 +676,8 @@ async def create_order(
         order_value=data.order_value,
         gst_number=data.gst_number,
         eway_bill_number=data.eway_bill_number,
+        insurance=data.insurance,
+        regional_area=data.regional_area,
         status=OrderStatus.PROCESSING,
         previous_status=OrderStatus.PROCESSING,
         created_by=current_user.id,
@@ -695,7 +705,8 @@ async def create_order(
             id=str(uuid.uuid4()),
             order_id=order.id,
             product_name=item_data.product_name,
-            sku=item_data.sku,
+            # sku=item_data.sku,
+            sku=await generate_sku(db),
             unit_price=item_data.unit_price,
             qty=item_data.qty,
             total=item_data.total,

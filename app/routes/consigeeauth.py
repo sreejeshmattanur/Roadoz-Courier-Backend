@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 
 from app.models.consigeeauth import AuthUser
-
+from app.models.consignee import Consignee
 from app.schemas.consigeeauth import (
     RegisterRequest,
     SendOTPRequest,
@@ -32,24 +32,20 @@ router = APIRouter(prefix="/email-auth",tags=["User Email Authentication"])
     
 @router.post("/register")
 async def register_user(payload: RegisterRequest,db: AsyncSession = Depends(get_db)):
-    
+
+    result = await db.execute(select(Consignee).where(Consignee.email == payload.email))
+    consignee = result.scalar_one_or_none()
+    if not consignee:
+        raise HTTPException(status_code=400,detail="User does not find ")
     result = await db.execute(select(AuthUser).where(AuthUser.email == payload.email))
     existing_user = result.scalar_one_or_none()
     if existing_user:
-        raise HTTPException(
-            status_code=400,
-            detail="Email already registered")
-    user = AuthUser(
-        name=payload.name,
-        email=payload.email)
+        raise HTTPException(status_code=400,detail="Email already registered")
+    user = AuthUser(name=payload.name,email=payload.email)
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    print("USER SAVED:", user.id)
-    return {
-        "message": "User registered successfully",
-        "user_id": user.id
-    }    
+    return {"message": "User registered successfully","user_id": user.id}    
     
 
 
@@ -69,6 +65,8 @@ async def send_otp(
     if not email_sent:
         raise HTTPException(status_code=500,detail="Unable to send OTP email")
     return {"message": "OTP sent successfully"}
+    
+    
     
     
 
