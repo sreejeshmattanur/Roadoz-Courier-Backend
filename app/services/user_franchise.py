@@ -49,28 +49,21 @@ import aiosmtplib
 
 async def send_email(to_email: str, subject: str, body: str):
     message = MIMEMultipart()
-    message["From"] = f"Roadoz Courier <{settings.SMTP_FROM}>"
+    message["From"] = f"Roadoz Courier <{settings.SMTP_USERNAME}>"
     message["To"] = to_email
     message["Subject"] = subject
-    message.attach(
-        MIMEText(body, "plain")
-    )
+    message.attach(MIMEText(body, "plain"))
     try:
-        smtp = aiosmtplib.SMTP(
+        await aiosmtplib.send(
+            message,
             hostname=settings.SMTP_HOST,
             port=settings.SMTP_PORT,
-            start_tls=True
+            username=settings.SMTP_USERNAME,
+            password=settings.SMTP_PASSWORD,
+            start_tls=True,
         )
-        await smtp.connect()
-        await smtp.login(
-            settings.SMTP_USERNAME,
-            settings.SMTP_PASSWORD
-        )
-        await smtp.send_message(message)
-        await smtp.quit()
         print("EMAIL SENT SUCCESSFULLY")
         return True
-
     except Exception as e:
         print("SMTP ERROR:", e)
         return False
@@ -361,18 +354,18 @@ async def approve_franchise_application(
         await db.refresh(franchise)
         
         email_body = f"""
-        Hello {app.full_name},
-        Your Roadoz Courier franchise application has been approved successfully.
-        Your account has been created.
-        Login Details:
-        Email:
-        {app.email}
-        Password:
-        {data.password}
-        Franchise Code:
-        {franchise.franchise_code}
-        Thank you,
-        Roadoz Courier Team
+Hello {app.full_name},
+
+Your Roadoz Courier franchise application has been approved successfully.
+Your account has been created.
+
+Login Details:
+  Email: {app.email}
+  Password: {data.password}
+  Franchise Code: {franchise.franchise_code}
+
+Thank you,
+Roadoz Courier Team
         """
         await send_email(
             to_email=app.email,
