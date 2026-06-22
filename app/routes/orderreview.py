@@ -29,7 +29,6 @@ async def create_review(
     db.add(new_review)
     await db.commit()
     await db.refresh(new_review)
-
     return new_review
 
 

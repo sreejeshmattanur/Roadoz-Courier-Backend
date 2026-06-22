@@ -2765,7 +2765,6 @@ from fastapi import status
 async def track_order_by_barcode(
     barcode: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
 ):
 
     decoded_barcode = barcode.strip()
