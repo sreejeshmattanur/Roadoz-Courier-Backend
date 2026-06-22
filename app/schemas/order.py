@@ -153,7 +153,7 @@ class ConsigneeStatusUpdate(BaseModel):
 
 class OrderItemCreate(BaseModel):
     product_name: str = Field(..., min_length=1, max_length=255)
-    sku: Optional[str] = Field(None, max_length=100)
+    # sku: Optional[str] = Field(None, max_length=100)
     unit_price: float = Field(..., gt=0)
     qty: int = Field(..., ge=1)
     total: float = Field(..., gt=0)
@@ -242,6 +242,8 @@ class OrderCreate(BaseModel):
 
     gst_number: Optional[str] = Field(None, max_length=20)
     eway_bill_number: Optional[str] = Field(None, max_length=30)
+    insurance: float | None = 0
+    regional_area: str | None = None
 
 
 # ── Order Response ─────────────────────────────────────────────────────────
@@ -264,6 +266,8 @@ class OrderOut(BaseModel):
     shipping_charge: float = 0
     gst_number: Optional[str] = None
     eway_bill_number: Optional[str] = None
+    insurance: float | None
+    regional_area: str | None
     barcode: Optional[str] = None
     status: str
     created_by: str

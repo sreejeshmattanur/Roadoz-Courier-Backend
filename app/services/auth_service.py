@@ -10,7 +10,7 @@ from app.models.permission import Permission
 from app.core.security import verify_password
 from app.utils.jwt import create_access_token, create_refresh_token
 from app.schemas.auth import (
-    LoginRequest, TokenResponse, RoleCheckResponse, RoleOut, FranchiseInfo,
+    LoginRequest, TokenResponse, RoleCheckResponse, RoleOut, FranchiseInfo, WarehouseInfo
 )
 
 
@@ -60,6 +60,7 @@ async def authenticate_user(db: AsyncSession, request: LoginRequest, http_reques
     role_name = role.name.lower() if role else None
 
     franchise = None
+    warehouse = None
 
     # Franchise-specific: require franchise_code when role name is 'franchise'
     if role_name == "franchise":
@@ -79,6 +80,16 @@ async def authenticate_user(db: AsyncSession, request: LoginRequest, http_reques
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid franchise code")
         if not franchise.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Franchise account is disabled")
+    elif role_name == "warehouse":
+        from app.models.warehouse import WareHouseAddress
+        result = await db.execute(
+            select(WareHouseAddress).where(
+                WareHouseAddress.user_id == user.id,
+            )
+        )
+        warehouse = result.scalar_one_or_none()
+        if not warehouse:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Warehouse account not found")
     else:
         # For employees, resolve their parent franchise
         franchise = await _resolve_franchise(db, user, role_name)
@@ -99,6 +110,9 @@ async def authenticate_user(db: AsyncSession, request: LoginRequest, http_reques
         "permissions": permissions,
         "franchise_id": franchise.id if franchise else None,
         "franchise_code": franchise.franchise_code if franchise else None,
+        "warehouse_id": warehouse.id if warehouse else None,
+        "warehouse_nickname": warehouse.nickname if warehouse else None,
+        "warehouse_contact_name": warehouse.contact_name if warehouse else None,
     }
 
     franchise_info = None
@@ -107,6 +121,14 @@ async def authenticate_user(db: AsyncSession, request: LoginRequest, http_reques
             id=franchise.id,
             franchise_code=franchise.franchise_code,
             name=franchise.name,
+        )
+
+    warehouse_info = None
+    if warehouse:
+        warehouse_info = WarehouseInfo(
+            id=warehouse.id,
+            nickname=warehouse.nickname,
+            contact_name=warehouse.contact_name,
         )
 
     if http_request:
@@ -118,6 +140,7 @@ async def authenticate_user(db: AsyncSession, request: LoginRequest, http_reques
         role=(RoleOut(id=role.id, name=role.name) if role else None),
         permissions=permissions,
         franchise=franchise_info,
+        warehouse=warehouse_info,
     )
 
 

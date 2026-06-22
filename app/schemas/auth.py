@@ -28,6 +28,12 @@ class FranchiseInfo(BaseModel):
     name: str
 
 
+class WarehouseInfo(BaseModel):
+    id: str
+    nickname: str
+    contact_name: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
@@ -35,6 +41,7 @@ class TokenResponse(BaseModel):
     role: Optional[RoleOut] = None
     permissions: list[str] = []
     franchise: Optional[FranchiseInfo] = None
+    warehouse: Optional[WarehouseInfo] = None
 
 
 class RefreshTokenRequest(BaseModel):
