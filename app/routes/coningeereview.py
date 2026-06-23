@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException,status   
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.models.user import User
@@ -136,3 +136,24 @@ async def get_approved_reviews(page: int = Query(1, ge=1),limit: int = Query(10,
         "limit": limit,
         "data": reviews
     }        
+    
+    
+    
+@router.delete("/reviewsdelete/{review_id}", status_code=status.HTTP_200_OK)
+async def delete_review(
+    review_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_adminuser),
+    _: User = Depends(require_permission("reviews:delete"))
+):
+  
+    result = await db.execute(select(ProductReview).where(ProductReview.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Review not found")
+    await db.delete(review)
+    await db.commit()
+    return {
+        "message": "Review deleted successfully",
+        "review_id": review_id
+    }
