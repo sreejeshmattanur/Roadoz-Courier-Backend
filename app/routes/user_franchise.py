@@ -86,7 +86,7 @@ async def create_franchise_application(
     photo_file: Optional[UploadFile] = File(None),
     business_registration_file: Optional[UploadFile] = File(None),
     bank_statement_file: Optional[UploadFile] = File(None),
-    
+    current_auth_user: AuthUser = Depends(get_current_auth_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -177,6 +177,7 @@ async def create_franchise_application(
     
     application = FranchiseApplicationbyUser(
         id=application_id,
+        user_id=current_auth_user.id,
         status="pending",
         full_name=full_name,
         email=email,

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, date
-from sqlalchemy import String, DateTime, Date, ForeignKey, Boolean, Text, Integer, Enum ,text
+from sqlalchemy import String, DateTime, Date, ForeignKey, Boolean, Text, Integer, Enum ,text,Column
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 
@@ -14,7 +14,7 @@ class FranchiseApplicationbyUser(Base):
     __tablename__ = "franchise_applications_byuser"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    
+    user_id = Column(String(36), ForeignKey("auth_users.id", ondelete="CASCADE"), nullable=True, unique=True)
     # Application Status
     status: Mapped[str] = mapped_column(
         String(20), 
