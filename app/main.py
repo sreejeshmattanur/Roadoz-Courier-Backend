@@ -138,6 +138,7 @@ DEFAULT_PERMISSIONS = [
     ("tickets", "view", "View tickets"),
     ("tickets", "create", "Create tickets"),
     ("communication", "view", "View communications"),
+    ("communication", "send", "Send messages in communication chat"),
 ]
 
 
