@@ -105,7 +105,8 @@ class Order(Base):
     # Other details
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     eway_bill_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
-
+    insurance: Mapped[float | None] = mapped_column(nullable=True, default=0)
+    regional_area: Mapped[str | None] = mapped_column(String(100), nullable=True)
     # Barcode (base64 PNG)
     barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -137,7 +138,7 @@ class Order(Base):
     packages = relationship("OrderPackage", back_populates="order", cascade="all, delete-orphan", lazy="selectin")
     pickup_address = relationship("PickupAddress", lazy="selectin")
     consignee = relationship("Consignee", lazy="selectin")
-    
+    product_reviews  = relationship("ProductReview",back_populates="order", lazy="selectin")
     
     
     

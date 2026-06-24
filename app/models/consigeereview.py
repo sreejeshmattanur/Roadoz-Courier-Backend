@@ -25,5 +25,5 @@ class ProductReview(Base):
     created_at = Column(DateTime,default=datetime.utcnow)
     admin_approved = Column(Boolean, nullable=True, default=False)
     updated_at = Column(DateTime,default=datetime.utcnow,onupdate=datetime.utcnow)
-    order = relationship("Order", backref="product_reviews")
+    order = relationship("Order", back_populates="product_reviews")
     consignee = relationship("AuthUser", backref="product_reviews")

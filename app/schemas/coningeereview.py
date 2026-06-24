@@ -1,13 +1,13 @@
 from pydantic import BaseModel
 from typing import Optional
 from app.models.consigeereview import ReviewStatus
-
+from uuid import UUID
 
 
 class ProductReviewCreate(BaseModel):
     order_id: str
     review: str
-    rating: str
+    rating: int
 
 
 

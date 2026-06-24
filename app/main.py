@@ -15,7 +15,7 @@ from app.routes import auth, franchise, orderreview,projectreview , profile, web
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, ActivityLoggingMiddleware
 from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration,notification
 from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration, analytics,user_admincommunication, rate_calculator, reports, prints, operations
-from app.routes import bulk_order, bag,label
+from app.routes import bulk_order, bag,label,user_franchise,consigeeuserorder
 from app.models.activity_log import ActivityLog
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
 
@@ -138,6 +138,7 @@ DEFAULT_PERMISSIONS = [
     ("tickets", "view", "View tickets"),
     ("tickets", "create", "Create tickets"),
     ("communication", "view", "View communications"),
+    ("communication", "send", "Send messages in communication chat"),
 ]
 
 
@@ -348,6 +349,9 @@ app.include_router(operations.router,prefix=API_PREFIX)
 app.include_router(bulk_order.router,prefix=API_PREFIX)
 app.include_router(bag.router,prefix=API_PREFIX)
 app.include_router(label.router,prefix=API_PREFIX)
+app.include_router(user_franchise.router,prefix=API_PREFIX)
+app.include_router(consigeeuserorder.router,prefix=API_PREFIX)
+
 
 @app.get("/", tags=["Health"])
 async def root():

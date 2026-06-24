@@ -57,14 +57,11 @@ htmlcov/
 # FastAPI / Uvicorn
 # =========================
 *.pid
+smtp_test.py
 
 # =========================
 # Migrations (Alembic)
 # =========================
-alembic/versions/*.pyc
-
-# Keep migration scripts, ignore compiled
-alembic/versions/__pycache__/
 
 # =========================
 # OS files
@@ -84,4 +81,12 @@ dist/
 # =========================
 docker-compose.override.yml
 
-/alembic
+
+
+# Uploaded files
+media/
+uploads/
+*.jpg
+*.jpeg
+*.png
+*.pdf

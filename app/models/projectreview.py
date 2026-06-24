@@ -11,7 +11,7 @@ class ProjectReview(Base):
 
     id: Mapped[str] = mapped_column(String(36),primary_key=True,default=lambda: str(uuid.uuid4()))
 
-    user_id: Mapped[str] = mapped_column(String(36),ForeignKey("users.id", ondelete="CASCADE"))
+    user_id: Mapped[str] = mapped_column(String(36),ForeignKey("auth_users.id", ondelete="CASCADE"))
 
     rating: Mapped[int] = mapped_column(Integer, nullable=False)
 

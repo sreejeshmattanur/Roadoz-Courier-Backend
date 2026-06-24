@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException,status   
 from sqlalchemy.orm import Session
 from typing import Optional
-
+from app.models.user import User
 from app.core.database import get_db
 from sqlalchemy import select
 from app.models.order import Order
@@ -12,7 +12,7 @@ from app.models.consigeereview import (ProductReview,ReviewStatus)
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.schemas.coningeereview import (ProductReviewCreate,ProductReviewApprove,ProductReviewResponse,ApprovedReviewPaginationResponse,ProductReviewPaginationResponse)
 from app.dependencies.consigeeuser import get_current_user as get_current_consigee
-from app.dependencies.role_checker import get_current_user as get_current_adminuser
+from app.dependencies.role_checker import get_current_user as get_current_adminuser,require_permission
 from math import ceil
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, func
@@ -51,14 +51,15 @@ async def create_product_review(
 
 
 
-
 @router.put("/approve/{review_id}")
 async def approve_product_review(
     review_id: str,
     approveor:bool,
     admin_comment: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
-    current_user: AuthUser = Depends(get_current_adminuser)):
+    current_user: User = Depends(get_current_adminuser),
+    _: User = Depends(require_permission("reviews:approve"))):
+    
     review_result = await db.execute(
         select(ProductReview).where(ProductReview.id == review_id))
     review = review_result.scalars().first()
@@ -88,8 +89,13 @@ async def approve_product_review(
    
           
     
-@router.get("/all-reviews/",response_model=ProductReviewPaginationResponse)
-async def get_all_reviews(page: int = Query(1, ge=1),limit: int = Query(10, ge=1),db: AsyncSession = Depends(get_db)):
+@router.get("/all-reviews_not_approve/",response_model=ProductReviewPaginationResponse)
+async def get_all_reviews(page: int = Query(1, ge=1),
+    limit: int = Query(10, ge=1),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_adminuser),
+    _: User = Depends(require_permission("reviews:view"))):
+    
     total_result = await db.execute(select(func.count(ProductReview.id)))
     total_reviews = total_result.scalar()
     skip = (page - 1) * limit
@@ -111,7 +117,7 @@ async def get_all_reviews(page: int = Query(1, ge=1),limit: int = Query(10, ge=1
     
     
 @router.get("/approved-reviews/",response_model=ApprovedReviewPaginationResponse)
-async def get_approved_reviews(page: int = Query(1, ge=1),limit: int = Query(5, ge=1),db: AsyncSession = Depends(get_db)):
+async def get_approved_reviews(page: int = Query(1, ge=1),limit: int = Query(10, ge=1),db: AsyncSession = Depends(get_db)):
     total_result = await db.execute(select(func.count(ProductReview.id)).where(ProductReview.admin_approved == True))
     total_reviews = total_result.scalar()
     skip = (page - 1) * limit
@@ -130,3 +136,24 @@ async def get_approved_reviews(page: int = Query(1, ge=1),limit: int = Query(5, 
         "limit": limit,
         "data": reviews
     }        
+    
+    
+    
+@router.delete("/reviewsdelete/{review_id}", status_code=status.HTTP_200_OK)
+async def delete_review(
+    review_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_adminuser),
+    _: User = Depends(require_permission("reviews:delete"))
+):
+  
+    result = await db.execute(select(ProductReview).where(ProductReview.id == review_id))
+    review = result.scalar_one_or_none()
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Review not found")
+    await db.delete(review)
+    await db.commit()
+    return {
+        "message": "Review deleted successfully",
+        "review_id": review_id
+    }

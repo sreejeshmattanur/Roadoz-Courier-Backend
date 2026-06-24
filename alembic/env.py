@@ -24,6 +24,14 @@ from app.models.remittance import Remittance, RemittanceOrder
 from app.models.invoice import Invoice, InvoiceOrder
 from app.models.orderreview import OrderReview
 from app.core.config import settings
+from app.models.consigeeauth import AuthUser,AuthUserProfile
+from app.models.consigeereview import ProductReview
+from app.models.user_franchise import FranchiseApplicationbyUser
+from app.models.projectreview import ProjectReview
+from app.models.user_admincommunication import AdminandUserMessage
+from app.models.warehouse import OrderWarehouseAddress
+from app.models.webconfiguration import WebConfiguration
+
 
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.DATABASE_URL)

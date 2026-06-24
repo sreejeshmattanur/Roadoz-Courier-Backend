@@ -18,10 +18,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd ~/Roadoz-Courier-Backend
             git fetch origin staging
             CHANGED=$(git diff HEAD origin/staging -- requirements.txt | wc -l)
-            git pull origin staging
+            git reset --hard origin/staging
             source venv/bin/activate
             if [ "$CHANGED" -gt "0" ]; then
               echo "requirements.txt changed, running pip install..."
@@ -30,6 +31,11 @@ jobs:
             else
               echo "requirements.txt unchanged, skipping pip install."
             fi
+            echo "Running database migrations..."
+            alembic upgrade head
+            echo "Running database seeders..."
+            python seed_warehouse_role.py
+            python seed_franchise_invoice_perm.py
             sudo systemctl restart roadoz
             sudo systemctl is-active roadoz
 
@@ -44,10 +50,11 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd ~/Roadoz-Courier-Backend
             git fetch origin main
             CHANGED=$(git diff HEAD origin/main -- requirements.txt | wc -l)
-            git pull origin main
+            git reset --hard origin/main
             source venv/bin/activate
             if [ "$CHANGED" -gt "0" ]; then
               echo "requirements.txt changed, running pip install..."
@@ -56,5 +63,10 @@ jobs:
             else
               echo "requirements.txt unchanged, skipping pip install."
             fi
+            echo "Running database migrations..."
+            alembic upgrade head
+            echo "Running database seeders..."
+            python seed_warehouse_role.py
+            python seed_franchise_invoice_perm.py
             sudo systemctl restart roadoz
             sudo systemctl is-active roadoz
