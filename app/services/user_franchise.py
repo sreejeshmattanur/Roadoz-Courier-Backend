@@ -453,3 +453,14 @@ async def list_franchise_applications(
         limit=limit,
         pages=ceil(total / limit) if total > 0 else 0,
     )
+    
+
+async def get_franchise_application_by_id(
+    db: AsyncSession,
+    application_id: str
+) -> FranchiseApplicationResponse:
+    result = await db.execute(select(FranchiseApplicationbyUser).where(FranchiseApplicationbyUser.id == application_id))
+    application = result.scalar_one_or_none()
+    if not application:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail="Franchise application not found")
+    return FranchiseApplicationResponse.model_validate(application)    

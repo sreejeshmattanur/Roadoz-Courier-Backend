@@ -97,10 +97,17 @@ class RateCalculatorService:
     def _get_slab_rate(self, weight: float, zone: str) -> float:
         from app.constants.tariff_rates import TARIFF_RATES
         rates = TARIFF_RATES.get(zone, {})
+        
+        if not rates:
+            raise ValueError(f"No rates defined for zone: {zone}")
+            
         for slab_weight in sorted(rates.keys()):
             if weight <= slab_weight:
                 return float(rates[slab_weight])
-        raise ValueError("Weight exceeds 35 KG")
+                
+        # If weight exceeds the maximum defined slab, apply the maximum slab's rate
+        max_slab_weight = max(rates.keys())
+        return float(rates[max_slab_weight])
 
     async def _validate_serviceability(self, pincode: str, label: str):
         try:

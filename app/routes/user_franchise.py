@@ -23,7 +23,8 @@ from app.dependencies.consigeeuser import get_current_user as get_current_auth_u
 from app.services.user_franchise import (
     approve_franchise_application,
     reject_franchise_application,
-    list_franchise_applications
+    list_franchise_applications,
+    get_franchise_application_by_id
 )
 import uuid
 
@@ -328,6 +329,17 @@ async def list_applications(
 ):
     """List all franchise applications (Admin only)"""
     return await list_franchise_applications(db, status, page, limit)
+
+
+@router.get("/getfranchiseapplication_byid/{application_id}", response_model=FranchiseApplicationResponse)
+async def get_application_by_id(
+    application_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("franchises:view")),):
+    
+    return await get_franchise_application_by_id(db, application_id)
+
 
 
 @router.get("/my-application", response_model=FranchiseApplicationResponse)

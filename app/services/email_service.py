@@ -10,16 +10,21 @@ from app.core.config import settings
 
 def send_otp_email(to_email: str, otp: str):
 
-    subject = "Your OTP Verification Code"
+    subject =  "Roadoz Courier - OTP Verification Code"
 
-    body = f"""
-    Hello,
+    body =f"""
+    Dear User,
 
-    Your OTP code is: {otp}
+    We received a request to verify your email address.
 
-    This OTP is valid for 5 minutes.
+    Your One-Time Password (OTP) is: {otp}
 
-    Thank you.
+    This OTP is valid for 5 minutes. Please do not share this code with anyone for security reasons.
+
+    If you did not request this OTP, please ignore this email.
+
+    Regards,
+    Roadoz Courier Team
     """
 
     message = MIMEMultipart()
