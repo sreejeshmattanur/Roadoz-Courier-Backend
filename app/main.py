@@ -135,6 +135,7 @@ DEFAULT_PERMISSIONS = [
     ("reviews", "create", "Create reviews"),
     ("reviews", "edit", "Edit reviews"),
     ("reviews", "delete", "Delete reviews"),
+    ("reviews", "approve", "Approve reviews"),
     ("tickets", "view", "View tickets"),
     ("tickets", "create", "Create tickets"),
     ("communication", "view", "View communications"),
