@@ -32,7 +32,7 @@ jobs:
               echo "requirements.txt unchanged, skipping pip install."
             fi
             echo "Running database migrations..."
-            alembic upgrade head
+            python safe_migrate.py
             echo "Running database seeders..."
             python seed_warehouse_role.py
             python seed_franchise_invoice_perm.py
@@ -64,7 +64,7 @@ jobs:
               echo "requirements.txt unchanged, skipping pip install."
             fi
             echo "Running database migrations..."
-            alembic upgrade head
+            python safe_migrate.py
             echo "Running database seeders..."
             python seed_warehouse_role.py
             python seed_franchise_invoice_perm.py
