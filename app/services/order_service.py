@@ -699,24 +699,12 @@ async def create_order(
         
         
         
-    # Add items
-    for item_data in data.items:
-        item = OrderItem(
-            id=str(uuid.uuid4()),
-            order_id=order.id,
-            product_name=item_data.product_name,
-            # sku=item_data.sku,
-            sku=await generate_sku(db),
-            unit_price=item_data.unit_price,
-            qty=item_data.qty,
-            total=item_data.total,
-        )
-        db.add(item)
-
     # Add packages and compute weight summary
     total_boxes = 0
     total_weight = 0.0
     total_vol = 0.0
+
+    package_objects = []
 
     for pkg_data in data.packages:
         pkg = OrderPackage(
@@ -730,12 +718,32 @@ async def create_order(
             physical_weight_kg=pkg_data.physical_weight_kg,
         )
         db.add(pkg)
+        package_objects.append(pkg)
 
         total_boxes += pkg_data.count
         total_weight += pkg_data.physical_weight_kg * pkg_data.count
         total_vol += pkg_data.vol_weight_kg * pkg_data.count
 
     applicable = max(total_weight, total_vol)
+
+    # Add items
+    for item_data in data.items:
+        pkg_id = None
+        if item_data.package_index is not None and 1 <= item_data.package_index <= len(package_objects):
+            pkg_id = package_objects[item_data.package_index - 1].id
+            
+        item = OrderItem(
+            id=str(uuid.uuid4()),
+            order_id=order.id,
+            order_package_id=pkg_id,
+            product_name=item_data.product_name,
+            # sku=item_data.sku,
+            sku=await generate_sku(db),
+            unit_price=item_data.unit_price,
+            qty=item_data.qty,
+            total=item_data.total,
+        )
+        db.add(item)
 
     order.total_boxes = total_boxes
     order.total_weight_kg = round(total_weight, 2)
