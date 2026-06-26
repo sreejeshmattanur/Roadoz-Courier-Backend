@@ -177,12 +177,12 @@ class OrderItemOut(BaseModel):
 
 
 class OrderPackageCreate(BaseModel):
-    count: int = Field(1, ge=1, description="Number of boxes")
-    length_cm: float = Field(..., gt=0)
-    breadth_cm: float = Field(..., gt=0)
-    height_cm: float = Field(..., gt=0)
+    count: int = Field(0, ge=0, description="Number of boxes")
+    length_cm: float = Field(..., ge=0)
+    breadth_cm: float = Field(..., ge=0)
+    height_cm: float = Field(..., ge=0)
     vol_weight_kg: float = Field(..., ge=0, description="Volumetric weight (B2C dividend 5000)")
-    physical_weight_kg: float = Field(..., gt=0)
+    physical_weight_kg: float = Field(..., ge=0)
 
 
 class OrderPackageOut(BaseModel):

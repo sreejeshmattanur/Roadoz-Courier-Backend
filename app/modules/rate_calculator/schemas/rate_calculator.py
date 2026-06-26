@@ -27,11 +27,11 @@ class RiskType(str, Enum):
 
 
 class RatePackageInput(BaseModel):
-    count: int = Field(..., ge=1)
-    length: float = Field(..., gt=0)
-    breadth: float = Field(..., gt=0)
-    height: float = Field(..., gt=0)
-    physical_weight: float = Field(..., gt=0)
+    count: int = Field(..., ge=0)
+    length: float = Field(..., ge=0)
+    breadth: float = Field(..., ge=0)
+    height: float = Field(..., ge=0)
+    physical_weight: float = Field(..., ge=0)
 
 
 class RateCalculationRequest(BaseModel):
