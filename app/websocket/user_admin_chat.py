@@ -46,41 +46,6 @@ async def _has_chat_permission(db: AsyncSession, user_id: str) -> bool:
 
 @router.websocket("/chat")
 async def websocket_chat(websocket: WebSocket):
-    """
-    Unified chat WebSocket endpoint for admin/staff ↔ customer communication.
-
-    **URL:** ``ws://127.0.0.1:8000/api/v1/ws/admin/chat?token=<JWT>``
-
-    **Who can connect:**
-    - **AuthUser** (customers / end-users): always allowed to connect and receive messages.
-      They may also *send* messages (their messages are stored and forwarded to the recipient).
-    - **User** (admin / staff): must have the ``communication:send`` RBAC permission
-      (or be ``super_admin``). Connection is rejected with code ``4003`` if permission is absent.
-
-    **Admin assigns permission via:** ``POST /api/v1/rbac/assign-role`` then
-    ensure the assigned role has ``communication:send`` in its permissions
-    (``POST /api/v1/rbac/permissions`` + ``PUT /api/v1/rbac/roles/{role_id}``).
-
-    **Message format (send):**
-    ```json
-    {
-        "receiver_id":   "<target user/auth_user UUID>",
-        "receiver_type": "user | auth_user",
-        "message":       "Hello!"
-    }
-    ```
-
-    **Message format (receive):**
-    ```json
-    {
-        "sender_id":     "<UUID>",
-        "sender_type":   "user | auth_user",
-        "receiver_id":   "<UUID>",
-        "receiver_type": "user | auth_user",
-        "message":       "Hello!"
-    }
-    ```
-    """
     # ── 1. Authenticate ───────────────────────────────────────────────────────
     token = websocket.query_params.get("token")
     if not token:
@@ -88,6 +53,8 @@ async def websocket_chat(websocket: WebSocket):
         return
 
     db: AsyncSession = AsyncSessionLocal()
+    user_id = None
+    user_type = None
     try:
         try:
             user_data = await verify_websocket_token(token, db=db)
@@ -95,8 +62,8 @@ async def websocket_chat(websocket: WebSocket):
             await websocket.close(code=4001, reason="Invalid token")
             return
 
-        user_id: str = user_data["user_id"]
-        user_type: str = user_data["user_type"]
+        user_id = user_data["user_id"]
+        user_type = user_data["user_type"]
 
         # ── 2. Authorise (only User/staff need explicit permission) ───────────
         if user_type != "auth_user":
@@ -119,14 +86,38 @@ async def websocket_chat(websocket: WebSocket):
             "user_type": user_type,
             "message": "Connected to chat. You can now send and receive messages.",
         })
+        
+        # Broadcast online status to opposite type
+        opposite_type = "user" if user_type == "auth_user" else "auth_user"
+        await manager.broadcast_to_type(opposite_type, {
+            "event": "user_status",
+            "user_id": user_id,
+            "user_type": user_type,
+            "status": "online"
+        })
 
         # ── 4. Message loop ───────────────────────────────────────────────────
         while True:
             data = await websocket.receive_json()
 
-            receiver_id: str | None = data.get("receiver_id")
-            receiver_type: str | None = data.get("receiver_type")
-            message: str | None = data.get("message")
+            event = data.get("event", "message")
+            
+            if event == "check_status":
+                target_id = data.get("target_id")
+                target_type = data.get("target_type")
+                if target_id and target_type:
+                    is_online = manager.is_online(target_type, target_id)
+                    await websocket.send_json({
+                        "event": "user_status",
+                        "user_id": target_id,
+                        "user_type": target_type,
+                        "status": "online" if is_online else "offline"
+                    })
+                continue
+
+            receiver_id = data.get("receiver_id")
+            receiver_type = data.get("receiver_type")
+            message = data.get("message")
 
             if not receiver_id or not receiver_type or not message:
                 await websocket.send_json({
@@ -136,7 +127,6 @@ async def websocket_chat(websocket: WebSocket):
                 continue
 
             # Re-check permission on each send for User/staff
-            # (catches mid-session revocations)
             if user_type != "auth_user":
                 still_allowed = await _has_chat_permission(db, user_id)
                 if not still_allowed:
@@ -164,6 +154,8 @@ async def websocket_chat(websocket: WebSocket):
                 "receiver_id": receiver_id,
                 "receiver_type": receiver_type,
                 "message": message,
+                "sender_online": True,
+                "receiver_online": manager.is_online(receiver_type, receiver_id)
             }
 
             # Forward to recipient (if online)
@@ -173,11 +165,22 @@ async def websocket_chat(websocket: WebSocket):
             await websocket.send_json({**payload, "event": "sent"})
 
     except WebSocketDisconnect:
-        manager.disconnect(user_type, user_id)
+        pass
     except Exception:
-        try:
-            manager.disconnect(user_type, user_id)
-        except Exception:
-            pass
+        pass
     finally:
+        if user_type and user_id:
+            try:
+                manager.disconnect(user_type, user_id, websocket)
+                # If they have no other tabs open, broadcast offline
+                if not manager.is_online(user_type, user_id):
+                    opposite_type = "user" if user_type == "auth_user" else "auth_user"
+                    await manager.broadcast_to_type(opposite_type, {
+                        "event": "user_status",
+                        "user_id": user_id,
+                        "user_type": user_type,
+                        "status": "offline"
+                    })
+            except Exception:
+                pass
         await db.close()

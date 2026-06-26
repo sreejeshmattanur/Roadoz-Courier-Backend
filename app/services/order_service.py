@@ -761,8 +761,8 @@ async def create_order(
     await db.flush()
 
     # Debit wallet if shipping charge > 0 and franchise is linked
-    if shipping_charge > 0 and franchise_id:
-        await debit_for_order(db, franchise_id, order.id, shipping_charge)
+    # if shipping_charge > 0 and franchise_id:
+    #     await debit_for_order(db, franchise_id, order.id, shipping_charge)
 
     # Reload all columns (created_at, updated_at, etc.) + relationships
     await db.refresh(order)
@@ -1261,13 +1261,13 @@ async def duplicate_order(
     await db.flush()
 
     # Debit shipping charge if applicable
-    if new_order.shipping_charge > 0 and franchise_id:
-        await debit_for_order(
-            db,
-            franchise_id,
-            new_order.id,
-            new_order.shipping_charge
-        )
+    # if new_order.shipping_charge > 0 and franchise_id:
+    #     await debit_for_order(
+    #         db,
+    #         franchise_id,
+    #         new_order.id,
+    #         new_order.shipping_charge
+    #     )
 
     # Refresh the new order with all relationships
     await db.refresh(new_order)
