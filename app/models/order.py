@@ -8,9 +8,9 @@ from app.core.database import Base
 from enum import Enum
 from sqlalchemy import Enum as SqlEnum
 
+from sqlalchemy.ext.hybrid import hybrid_property
 import pytz
 IST = pytz.timezone("Asia/Kolkata")
-
 def indian_time():
     return datetime.now(IST)
 
@@ -109,6 +109,14 @@ class Order(Base):
     pricing_zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_manual_freight: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
     manual_freight_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    @hybrid_property
+    def shipping_charge(self):
+        return self.total_freight
+
+    @shipping_charge.setter
+    def shipping_charge(self, value):
+        self.total_freight = value
 
     # Other details
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
