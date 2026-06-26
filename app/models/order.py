@@ -106,7 +106,7 @@ class Order(Base):
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     eway_bill_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
     insurance: Mapped[float | None] = mapped_column(nullable=True, default=0)
-    regional_area: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    regional_area:Mapped[float | None] = mapped_column(nullable=True, default=0)
     # Barcode (base64 PNG)
     barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
 

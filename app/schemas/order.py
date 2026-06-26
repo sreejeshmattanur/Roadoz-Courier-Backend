@@ -245,7 +245,7 @@ class OrderCreate(BaseModel):
     gst_number: Optional[str] = Field(None, max_length=20)
     eway_bill_number: Optional[str] = Field(None, max_length=30)
     insurance: float | None = 0
-    regional_area: str | None = None
+    regional_area: float | None = 0
 
 
 # ── Order Response ─────────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ class OrderOut(BaseModel):
     gst_number: Optional[str] = None
     eway_bill_number: Optional[str] = None
     insurance: float | None
-    regional_area: str | None
+    regional_area: float | None
     barcode: Optional[str] = None
     status: str
     created_by: str
