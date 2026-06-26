@@ -22,6 +22,7 @@ class PaymentMethod(str, Enum):
     COD = "COD"
     PREPAID = "Prepaid"
     TO_PAY = "To Pay"
+    CREDIT = "Credit"
 
 
 class ROV(str, Enum):
@@ -174,12 +175,12 @@ class OrderItemOut(BaseModel):
 
 
 class OrderPackageCreate(BaseModel):
-    count: int = Field(1, ge=1, description="Number of boxes")
-    length_cm: float = Field(..., gt=0)
-    breadth_cm: float = Field(..., gt=0)
-    height_cm: float = Field(..., gt=0)
+    count: int = Field(0, ge=0, description="Number of boxes")
+    length_cm: float = Field(..., ge=0)
+    breadth_cm: float = Field(..., ge=0)
+    height_cm: float = Field(..., ge=0)
     vol_weight_kg: float = Field(..., ge=0, description="Volumetric weight (B2C dividend 5000)")
-    physical_weight_kg: float = Field(..., gt=0)
+    physical_weight_kg: float = Field(..., ge=0)
 
 
 class OrderPackageOut(BaseModel):
@@ -216,6 +217,7 @@ class OrderCreate(BaseModel):
     payment_method: PaymentMethod
     cod_amount: Optional[float] = Field(None, ge=0, description="Required when payment_method is COD")
     to_pay_amount: Optional[float] = Field(None, ge=0, description="Required when payment_method is To Pay")
+    credit_amount: Optional[float] = Field(None, ge=0, description="Required when payment_method is Credit")
     rov: ROV
 
     order_value: float = Field(..., gt=0)
@@ -226,13 +228,22 @@ class OrderCreate(BaseModel):
             raise ValueError("cod_amount is required when payment_method is COD")
         if self.payment_method == PaymentMethod.TO_PAY and self.to_pay_amount is None:
             raise ValueError("to_pay_amount is required when payment_method is To Pay")
+        if self.payment_method == PaymentMethod.CREDIT and self.credit_amount is None:
+            raise ValueError("credit_amount is required when payment_method is Credit")
+            
         if self.payment_method == PaymentMethod.COD:
             self.to_pay_amount = None
+            self.credit_amount = None
         elif self.payment_method == PaymentMethod.TO_PAY:
             self.cod_amount = None
+            self.credit_amount = None
+        elif self.payment_method == PaymentMethod.CREDIT:
+            self.cod_amount = None
+            self.to_pay_amount = None
         elif self.payment_method == PaymentMethod.PREPAID:
             self.cod_amount = None
             self.to_pay_amount = None
+            self.credit_amount = None
         return self
 
     items: List[OrderItemCreate] = Field(..., min_length=1)
@@ -243,7 +254,7 @@ class OrderCreate(BaseModel):
     gst_number: Optional[str] = Field(None, max_length=20)
     eway_bill_number: Optional[str] = Field(None, max_length=30)
     insurance: float | None = 0
-    regional_area: str | None = None
+    regional_area: float | None = 0
 
 
 # ── Order Response ─────────────────────────────────────────────────────────
@@ -258,6 +269,7 @@ class OrderOut(BaseModel):
     payment_method: str
     cod_amount: Optional[float] = None
     to_pay_amount: Optional[float] = None
+    credit_amount: Optional[float] = None
     rov: str
     order_value: float
     items: List[OrderItemOut]
@@ -267,7 +279,7 @@ class OrderOut(BaseModel):
     gst_number: Optional[str] = None
     eway_bill_number: Optional[str] = None
     insurance: float | None
-    regional_area: str | None
+    regional_area: float | None
     barcode: Optional[str] = None
     status: str
     created_by: str
@@ -380,6 +392,7 @@ class OrderUpdate(BaseModel):
 
     cod_amount: Optional[float] = None
     to_pay_amount: Optional[float] = None
+    credit_amount: Optional[float] = None
 
     rov: Optional[ROV] = None
 

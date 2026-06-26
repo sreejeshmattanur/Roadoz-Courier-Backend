@@ -85,9 +85,10 @@ class Order(Base):
 
     bag_orders = relationship("BagOrder", back_populates="order",cascade="all, delete-orphan", lazy="selectin")
     # Payment
-    payment_method: Mapped[str] = mapped_column(String(20), nullable=False)  # COD | Prepaid | To Pay
+    payment_method: Mapped[str] = mapped_column(String(20), nullable=False)  # COD | Prepaid | To Pay | Credit
     cod_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when COD
     to_pay_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when To Pay
+    credit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when Credit
     rov: Mapped[str] = mapped_column(String(20), nullable=False)  # owner_risk | carrier_risk
 
     # Product summary
@@ -106,7 +107,7 @@ class Order(Base):
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     eway_bill_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
     insurance: Mapped[float | None] = mapped_column(nullable=True, default=0)
-    regional_area: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    regional_area:Mapped[float | None] = mapped_column(nullable=True, default=0)
     # Barcode (base64 PNG)
     barcode: Mapped[str | None] = mapped_column(Text, nullable=True)
 

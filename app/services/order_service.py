@@ -67,6 +67,7 @@ def _normalize_payment_mode(payment_method: str) -> str:
         "prepaid": "PREPAID",
         "to pay": "TO_PAY",
         "topay": "TO_PAY",
+        "credit": "CREDIT",
     }
     if value not in mapping:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unsupported payment_method: {payment_method}")
@@ -91,6 +92,7 @@ def _normalize_order_payment_method(payment_method: str) -> str:
         "prepaid": "Prepaid",
         "to pay": "To Pay",
         "topay": "To Pay",
+        "credit": "Credit",
     }
     if value not in mapping:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unsupported payment_method: {payment_method}")
@@ -246,6 +248,7 @@ def _build_order_out(order: Order) -> OrderOut:
         payment_method=order.payment_method,
         cod_amount=float(order.cod_amount) if order.cod_amount is not None else None,
         to_pay_amount=float(order.to_pay_amount) if order.to_pay_amount is not None else None,
+        credit_amount=float(order.credit_amount) if order.credit_amount is not None else None,
         rov=order.rov,
         order_value=float(order.order_value),
         items=[OrderItemOut.model_validate(i) for i in order.items],
@@ -672,6 +675,7 @@ async def create_order(
         payment_method=data.payment_method.value,
         cod_amount=data.cod_amount,
         to_pay_amount=data.to_pay_amount,
+        credit_amount=data.credit_amount,
         rov=data.rov.value,
         order_value=data.order_value,
         gst_number=data.gst_number,
@@ -849,6 +853,7 @@ async def process_bulk_excel_upload(
                 payment_method=payment_method,
                 cod_amount=float(get_val("cod_amount") or 0) if payment_method == "COD" else None,
                 to_pay_amount=float(get_val("to_pay_amount") or 0) if payment_method == "To Pay" else None,
+                credit_amount=float(get_val("credit_amount") or 0) if payment_method == "Credit" else None,
                 rov=_normalize_order_rov(str(get_val("rov", "owner_risk"))),
                 order_value=float(get_val("order_value") or 0),
                 items=[{
@@ -1192,6 +1197,7 @@ async def duplicate_order(
         payment_method=existing_order.payment_method,
         cod_amount=existing_order.cod_amount,
         to_pay_amount=existing_order.to_pay_amount,
+        credit_amount=existing_order.credit_amount,
         rov=existing_order.rov,
         order_value=existing_order.order_value,
         gst_number=existing_order.gst_number,

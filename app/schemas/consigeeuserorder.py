@@ -83,6 +83,7 @@ class OrderListResponse(BaseModel):
     payment_method: str
     cod_amount: Optional[float]
     to_pay_amount: Optional[float]
+    credit_amount: Optional[float]
     order_value: float
     total_weight_kg: float
     total_vol_weight_kg: float
