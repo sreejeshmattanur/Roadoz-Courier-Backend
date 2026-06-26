@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission
 from app.models.user import User
 from app.models.order import Order
+from app.models.invoice import InvoiceOrder
 from app.services.order_service import _resolve_franchise_id
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, func
@@ -79,6 +80,8 @@ class OrderLabelResponse(BaseModel):
     invoice_date: str
     notes: Optional[str] = None
     return_instruction: Optional[str] = None
+    invoice_number: Optional[str] = None
+    barcode_image: Optional[str] = None
 
 
 class BulkOrderError(BaseModel):
@@ -142,6 +145,18 @@ async def get_single_order_label_data(
     
     # Get return address (same as pickup address)
     return_address = order.pickup_address
+
+    # Fetch invoice number linked to this order (if any)
+    invoice_number: Optional[str] = None
+    inv_result = await db.execute(
+        select(InvoiceOrder)
+        .where(InvoiceOrder.order_id == order_id)
+        .options(selectinload(InvoiceOrder.invoice))
+        .limit(1)
+    )
+    invoice_order = inv_result.scalar_one_or_none()
+    if invoice_order and invoice_order.invoice:
+        invoice_number = invoice_order.invoice.invoice_number
     
     # Prepare response
     return {
@@ -223,6 +238,8 @@ async def get_single_order_label_data(
         "invoice_date": order.created_at.strftime("%d/%m/%Y"),
         "notes": f"If undelivered return to: {order.pickup_address.nickname}, {order.pickup_address.address_line_1}, {order.pickup_address.city}, {order.pickup_address.state}, {order.pickup_address.pincode}, India Mobile: {order.pickup_address.phone}",
         "return_instruction": f"For complaints & queries please contact {order.pickup_address.phone}",
+        "invoice_number": invoice_number,
+        "barcode_image": order.barcode,
     }
 
 
