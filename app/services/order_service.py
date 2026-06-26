@@ -1959,6 +1959,11 @@ async def update_order(
 
     if data.items is not None:
 
+        # Fetch existing items to preserve their SKUs
+        existing_items_result = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id).order_by(OrderItem.created_at))
+        existing_items = existing_items_result.scalars().all()
+        existing_skus = [item.sku for item in existing_items if item.sku]
+
         # Delete old items
         await db.execute(
             delete(OrderItem).where(
@@ -1968,12 +1973,17 @@ async def update_order(
 
         # Add new items
         for item_data in data.items:
+            
+            if existing_skus:
+                item_sku = existing_skus.pop(0)
+            else:
+                item_sku = await generate_sku(db)
 
             item = OrderItem(
                 id=str(uuid.uuid4()),
                 order_id=order.id,
                 product_name=item_data.product_name,
-                sku=item_data.sku,
+                sku=item_sku,
                 unit_price=item_data.unit_price,
                 qty=item_data.qty,
                 total=item_data.total,
