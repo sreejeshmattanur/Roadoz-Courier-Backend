@@ -468,7 +468,6 @@ async def remove_order(
 async def edit_order(
     order_id: str,
     data: OrderUpdate,
-    ManualFreightUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
