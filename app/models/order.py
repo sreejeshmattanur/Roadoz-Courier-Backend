@@ -191,10 +191,6 @@ class OrderItem(Base):
     order_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    
-    order_package_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("order_packages.id", ondelete="SET NULL"), nullable=True, index=True
-    )
 
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -207,7 +203,6 @@ class OrderItem(Base):
     )
 
     order = relationship("Order", back_populates="items")
-    package = relationship("OrderPackage", back_populates="items")
 
 
 class OrderPackage(Base):
@@ -231,7 +226,6 @@ class OrderPackage(Base):
     )
 
     order = relationship("Order", back_populates="packages")
-    items = relationship("OrderItem", back_populates="package", lazy="selectin")
 
 
 
