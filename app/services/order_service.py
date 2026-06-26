@@ -1998,7 +1998,7 @@ async def update_order(
                 id=str(uuid.uuid4()),
                 order_id=order.id,
                 product_name=item_data.product_name,
-                sku=item_sku,
+                sku=await generate_sku(db),
                 unit_price=item_data.unit_price,
                 qty=item_data.qty,
                 total=item_data.total,
