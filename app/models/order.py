@@ -85,9 +85,10 @@ class Order(Base):
 
     bag_orders = relationship("BagOrder", back_populates="order",cascade="all, delete-orphan", lazy="selectin")
     # Payment
-    payment_method: Mapped[str] = mapped_column(String(20), nullable=False)  # COD | Prepaid | To Pay
+    payment_method: Mapped[str] = mapped_column(String(20), nullable=False)  # COD | Prepaid | To Pay | Credit
     cod_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when COD
     to_pay_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when To Pay
+    credit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when Credit
     rov: Mapped[str] = mapped_column(String(20), nullable=False)  # owner_risk | carrier_risk
 
     # Product summary
@@ -197,10 +198,6 @@ class OrderItem(Base):
     order_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    
-    order_package_id: Mapped[str | None] = mapped_column(
-        String(36), ForeignKey("order_packages.id", ondelete="SET NULL"), nullable=True, index=True
-    )
 
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     sku: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -213,7 +210,6 @@ class OrderItem(Base):
     )
 
     order = relationship("Order", back_populates="items")
-    package = relationship("OrderPackage", back_populates="items")
 
 
 class OrderPackage(Base):
@@ -237,7 +233,6 @@ class OrderPackage(Base):
     )
 
     order = relationship("Order", back_populates="packages")
-    items = relationship("OrderItem", back_populates="package", lazy="selectin")
 
 
 

@@ -64,6 +64,7 @@ class OrderLabelResponse(BaseModel):
     payment_method: str
     cod_amount: Optional[float] = None
     to_pay_amount: Optional[float] = None
+    credit_amount: Optional[float] = None
     order_value: float
     shipping_charge: float
     status: str
@@ -170,6 +171,7 @@ async def get_single_order_label_data(
         "payment_method": order.payment_method,
         "cod_amount": float(order.cod_amount) if order.cod_amount else None,
         "to_pay_amount": float(order.to_pay_amount) if order.to_pay_amount else None,
+        "credit_amount": float(order.credit_amount) if order.credit_amount else None,
         "order_value": float(order.order_value),
         "shipping_charge": float(order.shipping_charge),
         "status": order.status,

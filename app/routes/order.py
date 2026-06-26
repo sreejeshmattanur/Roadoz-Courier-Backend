@@ -468,6 +468,7 @@ async def remove_order(
 async def edit_order(
     order_id: str,
     data: OrderUpdate,
+    ManualFreightUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -653,6 +654,7 @@ async def get_full_order(
             "payment_method": order.payment_method,
             "cod_amount": float(order.cod_amount) if order.cod_amount else None,
             "to_pay_amount": float(order.to_pay_amount) if order.to_pay_amount else None,
+            "credit_amount": float(order.credit_amount) if order.credit_amount else None,
             "order_value": float(order.order_value),
             "shipping_charge": float(order.shipping_charge),
             "created_at": order.created_at,
@@ -2711,6 +2713,7 @@ async def get_all_orders_by_status(
                 "created_by": o.created_by,
                 "payment_method": o.payment_method,
                 "cod_amount": float(o.cod_amount) if o.cod_amount else None,
+                "credit_amount": float(o.credit_amount) if o.credit_amount else None,
                 "order_value": float(o.order_value),
                 "total_weight_kg": float(o.total_weight_kg),
                 "applicable_weight_kg": float(o.applicable_weight_kg),
@@ -3738,6 +3741,7 @@ from app.schemas.bulkorders import BulkOrderDetailResponse,OrderPackageResponse,
 #             "previous_status": order.previous_status,
 #             "payment_method": order.payment_method,
 #             "cod_amount": float(order.cod_amount) if order.cod_amount else None,
+#             "credit_amount": float(order.credit_amount) if order.credit_amount else None,
 #             "to_pay_amount": float(order.to_pay_amount) if order.to_pay_amount else None,
 #             "order_value": float(order.order_value),
 #             "total_weight_kg": float(order.total_weight_kg),
@@ -3897,6 +3901,7 @@ async def get_bulk_order_details(
             "payment_method": order.payment_method,
             "cod_amount": float(order.cod_amount) if order.cod_amount else None,
             "to_pay_amount": float(order.to_pay_amount) if order.to_pay_amount else None,
+            "credit_amount": float(order.credit_amount) if order.credit_amount else None,
             "order_value": float(order.order_value),
             "total_weight_kg": float(order.total_weight_kg),
             "total_vol_weight_kg": float(order.total_vol_weight_kg),
@@ -4109,6 +4114,7 @@ async def get_bag_details(
                 "payment_method": order.payment_method,
                 "cod_amount": float(order.cod_amount) if order.cod_amount else None,
                 "to_pay_amount": float(order.to_pay_amount) if order.to_pay_amount else None,
+                "credit_amount": float(order.credit_amount) if order.credit_amount else None,
                 "order_value": float(order.order_value),
                 "total_weight_kg": float(order.total_weight_kg),
                 "total_vol_weight_kg": float(order.total_vol_weight_kg),
@@ -4817,6 +4823,48 @@ async def get_order_revenue_report(
         generated_at=indian_time().isoformat()
     )
 
+
+    
+
+from app.schemas.orderrevenue import RevenueRequest,RevenueSummaryResponse
+from app.services.orderrevenue import get_order_revenue_data
+@router.post("/orders/revenue-report")
+async def get_order_revenue_report(
+    payload: RevenueRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:view")),
+):
+    if payload.start_date > payload.end_date:
+        raise HTTPException(status_code=400, detail="Start date must be before or equal to end date")
+    date_diff = (payload.end_date - payload.start_date).days
+    if date_diff > 90:
+        raise HTTPException(status_code=400, detail="Date range cannot exceed 90 days")
+    revenue_data = await get_order_revenue_data(
+        db=db,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        current_user=current_user,
+        status_filter=payload.status,
+        payment_method_filter=payload.payment_method
+    )
+    return RevenueSummaryResponse(
+        success=True,
+        period={
+            "start_date": payload.start_date.isoformat(),
+            "end_date": payload.end_date.isoformat(),
+            "days": date_diff + 1},
+        
+        total_revenue=revenue_data["total_revenue"],
+        total_orders=revenue_data["total_orders"],
+        average_order_value=revenue_data["average_order_value"],
+        revenue_by_payment_method=revenue_data["revenue_by_payment_method"],
+        revenue_by_status=revenue_data["revenue_by_status"],
+        daily_breakdown=revenue_data["daily_breakdown"],
+        user_role=revenue_data["role_name"],
+        generated_at=indian_time().isoformat()
+    )
+
 @router.patch("/{order_id}/freight", response_model=OrderOut)
 async def update_manual_freight(
     order_id: str,
@@ -4850,4 +4898,4 @@ async def update_manual_freight(
     
     await db.commit()
     await db.refresh(order)
-    return order
+    return order
