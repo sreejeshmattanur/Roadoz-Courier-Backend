@@ -11,10 +11,10 @@ from app.core.config import settings
 from app.core.database import init_db
 from app.core.security import get_password_hash
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
-from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, wallet, remittance, invoice,warehouse
+from app.routes import auth, franchise, orderreview,projectreview , profile, websocket, rbac, order, remittance, invoice,warehouse
 from app.middleware.auth_middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware, ActivityLoggingMiddleware
-from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration,notification
-from app.routes import auth, franchise, profile, websocket, rbac, order, wallet, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration, analytics,user_admincommunication, rate_calculator, reports, prints, operations
+from app.routes import auth, franchise, profile, websocket, rbac, order, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration,notification
+from app.routes import auth, franchise, profile, websocket, rbac, order, remittance, invoice,warehouse, activity_log,consigeeauth,coningeereview,webconfiguration, analytics,user_admincommunication, rate_calculator, reports, prints, operations
 from app.routes import bulk_order, bag,label,user_franchise,consigeeuserorder
 from app.models.activity_log import ActivityLog
 from app.middleware.maintenance_middleware import MaintenanceMiddleware
@@ -108,10 +108,7 @@ DEFAULT_PERMISSIONS = [
     # Consignees
     ("consignees", "create", "Create consignees"),
     ("consignees", "view", "View consignees"),
-    # Wallet
-    ("wallet", "view", "View own wallet balance and transactions"),
-    ("wallet", "recharge", "Recharge own wallet"),
-    ("wallet", "manage", "Admin: view/adjust any franchise wallet"),
+
     # Remittances
     ("remittances", "view", "View remittance transactions and summary"),
     ("remittances", "manage", "Admin: create and mark remittances"),
@@ -330,7 +327,7 @@ app.include_router(franchise.router, prefix=API_PREFIX)
 app.include_router(profile.router,   prefix=API_PREFIX)
 app.include_router(rbac.router,      prefix=API_PREFIX)
 app.include_router(order.router,    prefix=API_PREFIX)
-app.include_router(wallet.router,   prefix=API_PREFIX)
+
 app.include_router(remittance.router, prefix=API_PREFIX)
 app.include_router(invoice.router,   prefix=API_PREFIX)
 app.include_router(activity_log.router, prefix=API_PREFIX)

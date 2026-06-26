@@ -77,7 +77,7 @@ async def generate_invoice(
                 Order.franchise_id == data.franchise_id,
                 Order.created_at >= period_start_dt,
                 Order.created_at <= period_end_dt,
-                Order.shipping_charge > 0,
+                Order.total_freight > 0,
                 ~Order.id.in_(select(InvoiceOrder.order_id)),
             )
         )
@@ -90,9 +90,10 @@ async def generate_invoice(
             detail="No uninvoiced orders with shipping charges found in this period",
         )
 
-    total_amount = round(sum(float(o.shipping_charge) for o in orders), 2)
-    subtotal = round(total_amount / (1 + data.tax_rate / 100), 2)
-    tax_amount = round(total_amount - subtotal, 2)
+    total_amount = round(sum(float(o.total_freight) for o in orders), 2)
+    subtotal = round(sum(float(o.freight_charge) for o in orders), 2)
+    tax_amount = round(sum(float(o.freight_gst) for o in orders), 2)
+    total_product_value = round(sum(float(o.order_value) for o in orders), 2)
 
     invoice_number = await _generate_invoice_number(db)
 
@@ -112,6 +113,7 @@ async def generate_invoice(
         tax_rate=data.tax_rate,
         tax_amount=tax_amount,
         total_amount=total_amount,
+        total_product_value=total_product_value,
         orders_count=len(orders),
         status="issued",
         created_at=indian_time().replace(tzinfo=None),
@@ -125,7 +127,9 @@ async def generate_invoice(
             id=str(uuid.uuid4()),
             invoice_id=invoice.id,
             order_id=order.id,
-            shipping_charge=float(order.shipping_charge),
+            freight_charge=float(order.freight_charge),
+            freight_gst=float(order.freight_gst),
+            total_freight=float(order.total_freight),
             created_at=indian_time().replace(tzinfo=None),
         )
         db.add(io)
@@ -155,27 +159,33 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
 
     # 4. Calculate Rate
     try:
-        final_amount = await calculate_order_shipping_charge(
+        pricing = await calculate_order_shipping_charge(
             db,
             order_type=order.order_type,
+            service_type=order.service_type,
             pickup_pincode=order.pickup_address.pincode,
             delivery_pincode=order.consignee.pincode,
             payment_method=order.payment_method,
             rov=order.rov,
             order_value=float(order.order_value),
             packages=order.packages,
+            is_gst_exempt=(order.freight_gst == 0),
         )
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Rate calculation failed: {str(e)}")
 
-    # Update Order shipping charge based on calculation
-    order.shipping_charge = final_amount
+    order.freight_charge = pricing.freight_charge
+    order.freight_gst = pricing.freight_gst
+    order.total_freight = pricing.total_freight
+    order.applied_weight_slab = pricing.applied_weight_slab
+    order.pricing_zone = pricing.zone
+    order.is_manual_freight = pricing.is_manual_freight
 
-    # 5. Create Invoice
     invoice_number = await _generate_invoice_number(db)
-    tax_rate = 18.0
-    subtotal = round(final_amount / (1 + tax_rate / 100), 2)
-    tax_amount = round(final_amount - subtotal, 2)
+    subtotal = float(order.freight_charge)
+    tax_amount = float(order.freight_gst)
+    total_amount = float(order.total_freight)
+    total_product_value = 0.0
     
     invoice = Invoice(
         id=str(uuid.uuid4()),
@@ -185,9 +195,10 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
         period_start=datetime.utcnow().date(),
         period_end=datetime.utcnow().date(),
         subtotal=subtotal,
-        tax_rate=tax_rate,
+        tax_rate=18.0,
         tax_amount=tax_amount,
-        total_amount=final_amount,
+        total_amount=total_amount,
+        total_product_value=total_product_value,
         orders_count=1,
         status="issued",
         created_at=indian_time().replace(tzinfo=None),
@@ -201,7 +212,9 @@ async def generate_invoice_for_order(db: AsyncSession, order_id: str) -> Invoice
         id=str(uuid.uuid4()),
         invoice_id=invoice.id,
         order_id=order.id,
-        shipping_charge=final_amount,
+        freight_charge=float(order.freight_charge),
+        freight_gst=float(order.freight_gst),
+        total_freight=float(order.total_freight),
         created_at=indian_time().replace(tzinfo=None),
     )
     db.add(io)
@@ -224,7 +237,7 @@ async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) 
         select(Order).where(
             and_(
                 Order.bulk_order_id == bulk_order_id,
-                Order.shipping_charge > 0,
+                Order.total_freight > 0,
                 ~Order.id.in_(select(InvoiceOrder.order_id)),
             )
         )
@@ -240,9 +253,10 @@ async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) 
     tax_rate = 18.0
     invoice_number = await _generate_invoice_number(db)
     
-    total_amount = round(sum(float(order.shipping_charge) for order in orders), 2)
-    subtotal = round(total_amount / (1 + tax_rate / 100), 2)
-    tax_amount = round(total_amount - subtotal, 2)
+    total_amount = round(sum(float(order.total_freight) for order in orders), 2)
+    subtotal = round(sum(float(order.freight_charge) for order in orders), 2)
+    tax_amount = round(sum(float(order.freight_gst) for order in orders), 2)
+    total_product_value = 0.0
     
     invoice = Invoice(
         id=str(uuid.uuid4()),
@@ -255,6 +269,7 @@ async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) 
         tax_rate=tax_rate,
         tax_amount=tax_amount,
         total_amount=total_amount,
+        total_product_value=total_product_value,
         orders_count=len(orders),
         status="issued",
         created_at=indian_time().replace(tzinfo=None),
@@ -269,7 +284,9 @@ async def generate_invoice_for_bulk_order(db: AsyncSession, bulk_order_id: str) 
                 id=str(uuid.uuid4()),
                 invoice_id=invoice.id,
                 order_id=order.id,
-                shipping_charge=float(order.shipping_charge),
+                freight_charge=float(order.freight_charge),
+                freight_gst=float(order.freight_gst),
+                total_freight=float(order.total_freight),
                 created_at=indian_time().replace(tzinfo=None),
             )
         )

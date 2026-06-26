@@ -24,7 +24,7 @@ router = APIRouter(prefix="/operations", tags=["Operations"])
 
 
 @router.post("/expenses", status_code=201)
-async def create_expense_endpoint(data: ExpenseCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), _: User = Depends(require_permission("wallet:manage"))):
+async def create_expense_endpoint(data: ExpenseCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), _: User = Depends(require_permission("users:manage"))):
     return await create_expense(db, data, current_user)
 
 
@@ -37,13 +37,13 @@ async def list_expenses_endpoint(
     franchise_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("wallet:manage")),
+    _: User = Depends(require_permission("users:manage")),
 ):
     return await list_expenses(db, current_user, page, limit, date_from, date_to, franchise_id)
 
 
 @router.post("/cash-vouchers", status_code=201)
-async def create_cash_voucher_endpoint(data: CashVoucherCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), _: User = Depends(require_permission("wallet:manage"))):
+async def create_cash_voucher_endpoint(data: CashVoucherCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user), _: User = Depends(require_permission("users:manage"))):
     return await create_cash_voucher(db, data, current_user)
 
 
@@ -56,7 +56,7 @@ async def list_cash_vouchers_endpoint(
     franchise_id: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("wallet:manage")),
+    _: User = Depends(require_permission("users:manage")),
 ):
     return await list_cash_vouchers(db, current_user, page, limit, date_from, date_to, franchise_id)
 

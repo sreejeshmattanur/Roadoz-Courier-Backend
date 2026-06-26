@@ -21,10 +21,10 @@ from app.models import pickup_address
 from app.models import remittance
 from app.models import role
 from app.models import role_permission
+from app.models import rate_master
 from app.models import ticket
 from app.models import user
 from app.models import user_admincommunication
 from app.models import user_role
-from app.models import wallet
 from app.models import warehouse
 from app.models import webconfiguration

@@ -8,6 +8,11 @@ class CalculatorType(str, Enum):
     B2C = "B2C"
     B2B = "B2B"
 
+class ServiceType(str, Enum):
+    SURFACE = "Surface"
+    EXPRESS = "Express"
+    INTERNATIONAL = "International"
+
 
 class ShipmentType(str, Enum):
     FORWARD = "FORWARD"
@@ -36,12 +41,14 @@ class RatePackageInput(BaseModel):
 
 class RateCalculationRequest(BaseModel):
     calculator_type: CalculatorType
+    service_type: ServiceType
     pickup_pincode: str = Field(..., min_length=6, max_length=10)
     delivery_pincode: str = Field(..., min_length=6, max_length=10)
     shipment_type: ShipmentType
     payment_mode: PaymentMode
     risk_type: RiskType
     declared_value: float = Field(0, ge=0)
+    is_gst_exempt: bool = False
     packages: List[RatePackageInput] = Field(..., min_length=1)
 
     @field_validator("pickup_pincode", "delivery_pincode")
@@ -54,13 +61,12 @@ class RateCalculationRequest(BaseModel):
 
 
 class PricingBreakdown(BaseModel):
-    base_freight: float
-    reverse_charge: float
-    cod_charge: float
-    fuel_surcharge: float
-    insurance_charge: float
-    gst: float
-    final_amount: float
+    freight_charge: float
+    freight_gst: float
+    total_freight: float
+    is_manual_freight: bool = False
+    zone: str = ""
+    applied_weight_slab: float = 0.0
 
 
 class RateCalculationData(BaseModel):

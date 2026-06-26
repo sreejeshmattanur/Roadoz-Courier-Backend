@@ -8,9 +8,9 @@ from app.core.database import Base
 from enum import Enum
 from sqlalchemy import Enum as SqlEnum
 
+from sqlalchemy.ext.hybrid import hybrid_property
 import pytz
 IST = pytz.timezone("Asia/Kolkata")
-
 def indian_time():
     return datetime.now(IST)
 
@@ -100,8 +100,23 @@ class Order(Base):
     applicable_weight_kg: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, server_default=text("0"))
     total_boxes: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
-    # Shipping charge (debited from wallet)
-    shipping_charge: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    # Freight charges
+    service_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'Surface'"))
+    freight_charge: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    freight_gst: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    total_freight: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    applied_weight_slab: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    pricing_zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_manual_freight: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
+    manual_freight_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    @hybrid_property
+    def shipping_charge(self):
+        return self.total_freight
+
+    @shipping_charge.setter
+    def shipping_charge(self, value):
+        self.total_freight = value
 
     # Other details
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)

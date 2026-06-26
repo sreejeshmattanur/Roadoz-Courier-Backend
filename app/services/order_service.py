@@ -23,7 +23,7 @@ from app.models.warehouse import WareHouseAddress,OrderWarehouseAddress
 from app.models.order import Order, OrderItem, OrderPackage, OrderStatus, BulkOrder,Bag,BagOrder
 from app.models.role import Role
 from app.models.user_role import UserRole
-from app.services.wallet_service import debit_for_order
+
 from app.utils.barcode import generate_barcode_base64
 
 from app.schemas.order import (
@@ -114,13 +114,15 @@ async def calculate_order_shipping_charge(
     db: AsyncSession,
     *,
     order_type: str,
+    service_type: str,
     pickup_pincode: str,
     delivery_pincode: str,
     payment_method: str,
     rov: str,
     order_value: float,
     packages: list,
-) -> float:
+    is_gst_exempt: bool = False,
+):
     if str(order_type).strip() == "International":
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -145,16 +147,18 @@ async def calculate_order_shipping_charge(
 
     request = RateCalculationRequest(
         calculator_type=str(order_type).strip(),
+        service_type=service_type,
         pickup_pincode=str(pickup_pincode).strip(),
         delivery_pincode=str(delivery_pincode).strip(),
         shipment_type="FORWARD",
         payment_mode=_normalize_payment_mode(payment_method),
         risk_type=_normalize_risk_type(rov),
         declared_value=float(order_value or 0),
+        is_gst_exempt=is_gst_exempt,
         packages=rate_packages,
     )
     rate_response = await calculate_rate(db, request)
-    return float(rate_response.data.pricing.final_amount)
+    return rate_response.data.pricing
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────
@@ -254,7 +258,14 @@ def _build_order_out(order: Order) -> OrderOut:
         items=[OrderItemOut.model_validate(i) for i in order.items],
         packages=[OrderPackageOut.model_validate(p) for p in order.packages],
         weight_summary=ws,
-        shipping_charge=float(order.shipping_charge),
+        service_type=order.service_type,
+        freight_charge=float(order.freight_charge),
+        freight_gst=float(order.freight_gst),
+        total_freight=float(order.total_freight),
+        applied_weight_slab=float(order.applied_weight_slab) if order.applied_weight_slab is not None else None,
+        pricing_zone=order.pricing_zone,
+        is_manual_freight=order.is_manual_freight,
+        manual_freight_reason=order.manual_freight_reason,
         gst_number=order.gst_number,
         eway_bill_number=order.eway_bill_number,
         insurance=order.insurance,         
@@ -745,19 +756,30 @@ async def create_order(
     order.total_weight_kg = round(total_weight, 2)
     order.total_vol_weight_kg = round(total_vol, 2)
     order.applicable_weight_kg = round(applicable, 2)
-    shipping_charge = float(data.shipping_charge or 0)
-    if shipping_charge <= 0:
-        shipping_charge = await calculate_order_shipping_charge(
-            db,
-            order_type=data.order_type.value,
-            pickup_pincode=pickup.pincode,
-            delivery_pincode=consignee.pincode,
-            payment_method=data.payment_method.value,
-            rov=data.rov.value,
-            order_value=data.order_value,
-            packages=data.packages,
-        )
-    order.shipping_charge = shipping_charge
+    caller_role = await _get_caller_role_name(db, current_user.id)
+    is_gst_exempt = data.is_gst_exempt if caller_role == "super admin" else False
+
+    pricing = await calculate_order_shipping_charge(
+        db,
+        order_type=data.order_type.value,
+        service_type=data.service_type.value,
+        pickup_pincode=pickup.pincode,
+        delivery_pincode=consignee.pincode,
+        payment_method=data.payment_method.value,
+        rov=data.rov.value,
+        order_value=data.order_value,
+        packages=data.packages,
+        is_gst_exempt=is_gst_exempt,
+    )
+
+    order.service_type = data.service_type.value
+    order.freight_charge = pricing.freight_charge
+    order.freight_gst = pricing.freight_gst
+    order.total_freight = pricing.total_freight
+    order.applied_weight_slab = pricing.applied_weight_slab
+    order.pricing_zone = pricing.zone
+    order.is_manual_freight = pricing.is_manual_freight
+    order.manual_freight_reason = None
 
     # Generate barcode from order number
     order.barcode = generate_barcode_base64(order_number)
@@ -1983,7 +2005,7 @@ async def update_order(
                 id=str(uuid.uuid4()),
                 order_id=order.id,
                 product_name=item_data.product_name,
-                sku=item_sku,
+                sku=await generate_sku(db),
                 unit_price=item_data.unit_price,
                 qty=item_data.qty,
                 total=item_data.total,

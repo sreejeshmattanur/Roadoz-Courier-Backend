@@ -2,18 +2,18 @@ import logging
 
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, and_
 
-from app.modules.rate_calculator.repositories.pricing_repository import PricingRepository
 from app.modules.rate_calculator.schemas.rate_calculator import (
     RateCalculationData,
     RateCalculationRequest,
     RateCalculationResponse,
     PricingBreakdown,
 )
-from app.modules.rate_calculator.services.pricing_engine import PricingEngine
 from app.modules.rate_calculator.services.weight_engine import WeightEngine
 from app.modules.rate_calculator.utils.validators import validate_calculation_request
 from app.services.rate_calculator.pincode_service import get_pincode_details
+from app.models.rate_master import RateMaster
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +21,7 @@ logger = logging.getLogger(__name__)
 class RateCalculatorService:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self.pricing_repository = PricingRepository(db)
         self.weight_engine = WeightEngine()
-        self.pricing_engine = PricingEngine()
 
     async def calculate(self, payload: RateCalculationRequest) -> RateCalculationResponse:
         logger.info("Incoming rate calculation payload: %s", payload.model_dump())
@@ -42,30 +40,41 @@ class RateCalculatorService:
         weights = self.weight_engine.calculate(payload, divisor=5000.0)
         
         zone = self._determine_zone(
-            pickup.city, pickup.state, delivery.city, delivery.state
+            payload.service_type.value, pickup.state, delivery.state
         )
         
-        try:
-            base_rate = self._get_slab_rate(weights.chargeable_weight, zone)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=str(e),
-            )
+        if weights.chargeable_weight > 30.0:
+            is_manual_freight = True
+            base_rate = 0.0
+            applied_slab = 0.0
+        else:
+            is_manual_freight = False
+            rate_row = await self._get_rate_from_db(payload.service_type.value, zone, weights.chargeable_weight)
+            if not rate_row:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"No rate defined for Service: {payload.service_type.value}, Zone: {zone}, Weight: {weights.chargeable_weight}kg",
+                )
+            base_rate = float(rate_row.base_rate)
+            applied_slab = float(rate_row.weight_up_to)
             
-        fuel_charge = round(base_rate * 0.52, 2)
-        subtotal = round(base_rate + fuel_charge, 2)
-        gst_amount = round(subtotal * 0.18, 2)
-        final_amount = round(subtotal + gst_amount, 2)
+        if is_manual_freight:
+            gst_amount = 0.0
+            final_amount = 0.0
+        else:
+            if payload.is_gst_exempt:
+                gst_amount = 0.0
+            else:
+                gst_amount = round(base_rate * 0.18, 2)
+            final_amount = round(base_rate + gst_amount, 2)
 
         pricing = PricingBreakdown(
-            base_freight=base_rate,
-            reverse_charge=0.0,
-            cod_charge=0.0,
-            fuel_surcharge=fuel_charge,
-            insurance_charge=0.0,
-            gst=gst_amount,
-            final_amount=final_amount,
+            freight_charge=base_rate,
+            freight_gst=gst_amount,
+            total_freight=final_amount,
+            is_manual_freight=is_manual_freight,
+            zone=zone,
+            applied_weight_slab=applied_slab,
         )
 
         return RateCalculationResponse(
@@ -78,36 +87,39 @@ class RateCalculatorService:
             )
         )
 
-    def _determine_zone(self, pickup_city: str, pickup_state: str, delivery_city: str, delivery_state: str) -> str:
+    def _determine_zone(self, service_type: str, pickup_state: str, delivery_state: str) -> str:
         from app.constants.tariff_rates import SOUTH_INDIA_STATES
         
-        p_city = (pickup_city or "").strip().lower()
-        d_city = (delivery_city or "").strip().lower()
         p_state = (pickup_state or "").strip().lower()
         d_state = (delivery_state or "").strip().lower()
 
-        if p_city == d_city and p_state == d_state and p_city != "":
-            return "LOCAL"
-        if p_state == "kerala" and d_state == "kerala":
-            return "KERALA"
-        if p_state in SOUTH_INDIA_STATES and d_state in SOUTH_INDIA_STATES:
-            return "SOUTH_INDIA"
-        return "REST_OF_INDIA"
+        is_south_india = p_state in SOUTH_INDIA_STATES and d_state in SOUTH_INDIA_STATES
+        is_kerala = p_state == "kerala" and d_state == "kerala"
 
-    def _get_slab_rate(self, weight: float, zone: str) -> float:
-        from app.constants.tariff_rates import TARIFF_RATES
-        rates = TARIFF_RATES.get(zone, {})
-        
-        if not rates:
-            raise ValueError(f"No rates defined for zone: {zone}")
+        if service_type == "Surface":
+            if is_kerala:
+                return "Kerala within State"
+            if is_south_india:
+                return "South India"
+            return "Rest of India"
+        elif service_type == "Express":
+            if is_south_india:
+                return "South India Express"
+            return "All India Express"
             
-        for slab_weight in sorted(rates.keys()):
-            if weight <= slab_weight:
-                return float(rates[slab_weight])
-                
-        # If weight exceeds the maximum defined slab, apply the maximum slab's rate
-        max_slab_weight = max(rates.keys())
-        return float(rates[max_slab_weight])
+        return "Rest of India"
+
+    async def _get_rate_from_db(self, service_type: str, zone: str, weight: float):
+        result = await self.db.execute(
+            select(RateMaster).where(
+                and_(
+                    RateMaster.service_type == service_type,
+                    RateMaster.zone == zone,
+                    RateMaster.weight_up_to >= weight
+                )
+            ).order_by(RateMaster.weight_up_to.asc()).limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def _validate_serviceability(self, pincode: str, label: str):
         try:

@@ -26,10 +26,11 @@ class Invoice(Base):
     period_start: Mapped[date] = mapped_column(Date, nullable=False)
     period_end: Mapped[date] = mapped_column(Date, nullable=False)
 
-    subtotal: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    subtotal: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False) # Total Freight Charge (Base)
     tax_rate: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, server_default=text("18"))
-    tax_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
-    total_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
+    tax_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False) # Total Freight GST
+    total_amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False) # Grand Total (Subtotal + Tax)
+    total_product_value: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, server_default=text("0")) # Just for reference
 
     orders_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
@@ -65,7 +66,9 @@ class InvoiceOrder(Base):
         String(36), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False, unique=True, index=True
     )
 
-    shipping_charge: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    freight_charge: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    freight_gst: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
+    total_freight: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default=text("0"))
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")

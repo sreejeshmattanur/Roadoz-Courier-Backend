@@ -18,7 +18,6 @@ from app.models.order import Order, BulkOrder, OrderItem, OrderPackage, Consigne
 from app.models.pickup_address import PickupAddress
 from app.models.consignee import Consignee
 from app.models.warehouse import WareHouseAddress
-from app.models.wallet import Wallet, WalletTransaction
 from app.models.activity_log import ActivityLog
 from app.models.remittance import Remittance, RemittanceOrder
 from app.models.invoice import Invoice, InvoiceOrder

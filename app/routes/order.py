@@ -32,6 +32,7 @@ from app.schemas.order import (
     LocationRequest,
     OrderStatusListResponse,
     OrderUpdate,
+    ManualFreightUpdate,
     
 
 )
@@ -4823,3 +4824,77 @@ async def get_order_revenue_report(
 
 
     
+
+from app.schemas.orderrevenue import RevenueRequest,RevenueSummaryResponse
+from app.services.orderrevenue import get_order_revenue_data
+@router.post("/orders/revenue-report")
+async def get_order_revenue_report(
+    payload: RevenueRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("orders:view")),
+):
+    if payload.start_date > payload.end_date:
+        raise HTTPException(status_code=400, detail="Start date must be before or equal to end date")
+    date_diff = (payload.end_date - payload.start_date).days
+    if date_diff > 90:
+        raise HTTPException(status_code=400, detail="Date range cannot exceed 90 days")
+    revenue_data = await get_order_revenue_data(
+        db=db,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        current_user=current_user,
+        status_filter=payload.status,
+        payment_method_filter=payload.payment_method
+    )
+    return RevenueSummaryResponse(
+        success=True,
+        period={
+            "start_date": payload.start_date.isoformat(),
+            "end_date": payload.end_date.isoformat(),
+            "days": date_diff + 1},
+        
+        total_revenue=revenue_data["total_revenue"],
+        total_orders=revenue_data["total_orders"],
+        average_order_value=revenue_data["average_order_value"],
+        revenue_by_payment_method=revenue_data["revenue_by_payment_method"],
+        revenue_by_status=revenue_data["revenue_by_status"],
+        daily_breakdown=revenue_data["daily_breakdown"],
+        user_role=revenue_data["role_name"],
+        generated_at=indian_time().isoformat()
+    )
+
+@router.patch("/{order_id}/freight", response_model=OrderOut)
+async def update_manual_freight(
+    order_id: str,
+    data: ManualFreightUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("orders_edit"))
+):
+    """
+    Update freight charges manually for an order (e.g., when physical weight exceeds 30kg).
+    """
+    result = await db.execute(
+        select(Order).where(Order.id == order_id).options(
+            selectinload(Order.pickup_address),
+            selectinload(Order.consignee),
+            selectinload(Order.items),
+            selectinload(Order.packages),
+        )
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(
+            status_code=http_status.HTTP_404_NOT_FOUND,
+            detail="Order not found"
+        )
+        
+    order.freight_charge = data.freight_charge
+    order.freight_gst = round(data.freight_charge * 0.18, 2)
+    order.total_freight = order.freight_charge + order.freight_gst
+    order.is_manual_freight = True
+    order.manual_freight_reason = data.reason
+    
+    await db.commit()
+    await db.refresh(order)
+    return order

@@ -12,6 +12,11 @@ class OrderType(str, Enum):
     B2B = "B2B"
     INTERNATIONAL = "International"
 
+class ServiceType(str, Enum):
+    SURFACE = "Surface"
+    EXPRESS = "Express"
+    INTERNATIONAL = "International"
+
 
 class TodayStatusRequestDatewise(BaseModel):
     date: date
@@ -249,7 +254,8 @@ class OrderCreate(BaseModel):
     items: List[OrderItemCreate] = Field(..., min_length=1)
     packages: List[OrderPackageCreate] = Field(..., min_length=1)
 
-    shipping_charge: float = Field(0, ge=0, description="Shipping charge to debit from wallet")
+    service_type: ServiceType = Field(ServiceType.SURFACE)
+    is_gst_exempt: Optional[bool] = Field(False, description="Optional GST exemption for super admin")
 
     gst_number: Optional[str] = Field(None, max_length=20)
     eway_bill_number: Optional[str] = Field(None, max_length=30)
@@ -275,11 +281,18 @@ class OrderOut(BaseModel):
     items: List[OrderItemOut]
     packages: List[OrderPackageOut]
     weight_summary: WeightSummary
-    shipping_charge: float = 0
+    service_type: str
+    freight_charge: float = 0
+    freight_gst: float = 0
+    total_freight: float = 0
+    applied_weight_slab: Optional[float] = None
+    pricing_zone: Optional[str] = None
+    is_manual_freight: bool = False
+    manual_freight_reason: Optional[str] = None
     gst_number: Optional[str] = None
     eway_bill_number: Optional[str] = None
-    insurance: float | None
-    regional_area: float | None
+    insurance: float | None = None
+    regional_area: float | None = None
     barcode: Optional[str] = None
     status: str
     created_by: str
@@ -291,21 +304,8 @@ class OrderOut(BaseModel):
 
     @computed_field
     @property
-    def base_freight(self) -> float:
-        from app.utils.rate_utils import reverse_calculate_charges
-        return reverse_calculate_charges(self.shipping_charge)["base_freight"]
-
-    @computed_field
-    @property
-    def fuel_surcharge(self) -> float:
-        from app.utils.rate_utils import reverse_calculate_charges
-        return reverse_calculate_charges(self.shipping_charge)["fuel_surcharge"]
-
-    @computed_field
-    @property
-    def gst_amount(self) -> float:
-        from app.utils.rate_utils import reverse_calculate_charges
-        return reverse_calculate_charges(self.shipping_charge)["gst_amount"]
+    def shipping_charge(self) -> float:
+        return self.total_freight
 
 
 class OrderListResponse(BaseModel):
@@ -401,7 +401,8 @@ class OrderUpdate(BaseModel):
     gst_number: Optional[str] = None
     eway_bill_number: Optional[str] = None
 
-    shipping_charge: Optional[float] = None
+    service_type: Optional[ServiceType] = None
+    total_freight: Optional[float] = None
 
     items: Optional[List[OrderItemCreate]] = None
     packages: Optional[List[OrderPackageCreate]] = None
@@ -418,3 +419,7 @@ class OrderStatusRequest(BaseModel):
     status: FilterableStatus
     page: int = 1
     limit: int = 10
+
+class ManualFreightUpdate(BaseModel):
+    freight_charge: float = Field(..., ge=0, description="Manual base freight charge")
+    reason: Optional[str] = Field(None, description="Reason for manual freight entry")

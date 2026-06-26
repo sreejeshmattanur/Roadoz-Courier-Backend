@@ -24,7 +24,7 @@ class DashboardAnalyticsResponse(BaseModel):
     total_orders: int
     rto_orders: int
     total_revenue_or_spend: float  # Represents Revenue for Super Admin, Spend for Franchise
-    wallet_transactions_count: int
+
     
     cod_vs_prepaid: Dict[str, int]
     order_statuses: Dict[str, int]

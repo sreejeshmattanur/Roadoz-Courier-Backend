@@ -20,7 +20,7 @@ class InvoiceOrderDetails(BaseModel):
     order_type: str
     payment_method: str
     order_value: float
-    shipping_charge: float
+    total_freight: float = 0
     status: str
     created_at: datetime
     pickup_address: PickupAddressOut
@@ -34,7 +34,9 @@ class InvoiceOrderDetails(BaseModel):
 class InvoiceOrderOut(BaseModel):
     id: str
     order_id: str
-    shipping_charge: float
+    freight_charge: float = 0
+    freight_gst: float = 0
+    total_freight: float = 0
     created_at: datetime
     order: InvoiceOrderDetails
 
@@ -42,21 +44,8 @@ class InvoiceOrderOut(BaseModel):
 
     @computed_field
     @property
-    def base_freight(self) -> float:
-        from app.utils.rate_utils import reverse_calculate_charges
-        return reverse_calculate_charges(self.shipping_charge)["base_freight"]
-
-    @computed_field
-    @property
-    def fuel_surcharge(self) -> float:
-        from app.utils.rate_utils import reverse_calculate_charges
-        return reverse_calculate_charges(self.shipping_charge)["fuel_surcharge"]
-
-    @computed_field
-    @property
-    def gst_amount(self) -> float:
-        from app.utils.rate_utils import reverse_calculate_charges
-        return reverse_calculate_charges(self.shipping_charge)["gst_amount"]
+    def shipping_charge(self) -> float:
+        return self.total_freight
 
 
 # ── Invoice ──────────────────────────────────────────────────────────────
@@ -73,6 +62,7 @@ class InvoiceOut(BaseModel):
     tax_rate: float
     tax_amount: float
     total_amount: float
+    total_product_value: float = 0
     orders_count: int
     status: str
     created_at: datetime

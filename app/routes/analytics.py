@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission
 from app.models.user import User
 from app.models.order import Order, OrderStatus
-from app.models.wallet import WalletTransaction, Wallet
+from app.models.franchise import Franchise
 from app.models.franchise import Franchise
 from app.models.consignee import Consignee
 from app.models.operations import Expense, CashVoucher, StaffAttendance
@@ -52,14 +52,6 @@ async def get_dashboard_analytics(
     if end_dt:
         order_conditions.append(Order.created_at <= end_dt)
         
-    wallet_conditions = []
-    if franchise_id:
-        wallet_id_subq = select(Wallet.id).where(Wallet.franchise_id == franchise_id).scalar_subquery()
-        wallet_conditions.append(WalletTransaction.wallet_id == wallet_id_subq)
-    if start_dt:
-        wallet_conditions.append(WalletTransaction.created_at >= start_dt)
-    if end_dt:
-        wallet_conditions.append(WalletTransaction.created_at <= end_dt)
 
     # 2. Total Orders
     total_orders_query = select(func.count(Order.id)).where(*order_conditions)
@@ -78,9 +70,7 @@ async def get_dashboard_analytics(
     revenue_query = select(func.sum(Order.shipping_charge)).where(*order_conditions)
     total_revenue_or_spend = float((await db.execute(revenue_query)).scalar_one_or_none() or 0.0)
 
-    # 5. Wallet Transactions Count
-    wallet_txn_query = select(func.count(WalletTransaction.id)).where(*wallet_conditions)
-    wallet_transactions_count = (await db.execute(wallet_txn_query)).scalar_one() or 0
+
 
     # 6. COD vs Prepaid
     cod_vs_prepaid = {}
@@ -187,11 +177,8 @@ async def get_dashboard_analytics(
     if not franchise_id:
         total_users = (await db.execute(select(func.count(User.id)))).scalar_one() or 0
         total_franchises = (await db.execute(select(func.count(Franchise.id)))).scalar_one() or 0
-        total_wallet_balance = (await db.execute(select(func.sum(Wallet.balance)))).scalar_one_or_none() or 0.0
-        
         extra_counts["total_users"] = float(total_users)
         extra_counts["total_franchises"] = float(total_franchises)
-        extra_counts["total_wallet_balance"] = float(total_wallet_balance)
         
         
     # franchise order count    
@@ -256,7 +243,6 @@ async def get_dashboard_analytics(
         total_orders=total_orders,
         rto_orders=rto_orders,
         total_revenue_or_spend=total_revenue_or_spend,
-        wallet_transactions_count=wallet_transactions_count,
         cod_vs_prepaid=cod_vs_prepaid,
         order_statuses=order_statuses,
         delivered_vs_rto=delivered_vs_rto,
