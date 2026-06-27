@@ -402,6 +402,7 @@ class OrderUpdate(BaseModel):
     eway_bill_number: Optional[str] = None
 
     service_type: Optional[ServiceType] = None
+    is_gst_exempt: Optional[bool] = Field(None, description="Optional GST exemption for users with orders:create permission")
     total_freight: Optional[float] = None
 
     items: Optional[List[OrderItemCreate]] = None

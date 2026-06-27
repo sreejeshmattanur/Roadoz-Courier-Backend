@@ -2062,7 +2062,64 @@ async def update_order(
         order.total_vol_weight_kg = round(total_vol, 2)
         order.applicable_weight_kg = round(applicable, 2)
 
+    rate_affecting_fields = [
+        "order_type", "service_type", "pickup_address_id", 
+        "consignee_id", "payment_method", "rov", 
+        "order_value", "packages", "is_gst_exempt"
+    ]
     
+    update_data_keys = data.model_dump(exclude_unset=True).keys()
+    needs_recalc = any(f in update_data_keys for f in rate_affecting_fields)
+    
+    if needs_recalc:
+        pickup_addr = await db.scalar(select(PickupAddress).where(PickupAddress.id == order.pickup_address_id))
+        consignee_addr = await db.scalar(select(Consignee).where(Consignee.id == order.consignee_id))
+        
+        if data.packages is not None:
+            current_packages = data.packages
+        else:
+            existing_pkgs_res = await db.execute(select(OrderPackage).where(OrderPackage.order_id == order.id))
+            existing_pkgs = existing_pkgs_res.scalars().all()
+            from app.schemas.order import OrderPackageCreate
+            current_packages = [
+                OrderPackageCreate(
+                    count=p.count,
+                    length_cm=p.length_cm,
+                    breadth_cm=p.breadth_cm,
+                    height_cm=p.height_cm,
+                    vol_weight_kg=p.vol_weight_kg,
+                    physical_weight_kg=p.physical_weight_kg
+                ) for p in existing_pkgs
+            ]
+            
+        if data.is_gst_exempt is not None:
+            user_permissions = await get_user_permissions(db, current_user.id)
+            caller_role = await _get_caller_role_name(db, current_user.id)
+            can_exempt_gst = (caller_role == "super admin") or ("orders:create" in user_permissions)
+            is_gst_exempt = data.is_gst_exempt if can_exempt_gst else False
+        else:
+            is_gst_exempt = (order.freight_charge > 0 and order.freight_gst == 0)
+            
+        pricing = await calculate_order_shipping_charge(
+            db,
+            order_type=order.order_type,
+            service_type=order.service_type,
+            pickup_pincode=pickup_addr.pincode,
+            delivery_pincode=consignee_addr.pincode,
+            payment_method=order.payment_method,
+            rov=order.rov,
+            order_value=order.order_value,
+            packages=current_packages,
+            is_gst_exempt=is_gst_exempt,
+        )
+        
+        order.freight_charge = pricing.freight_charge
+        order.freight_gst = pricing.freight_gst
+        order.total_freight = pricing.total_freight
+        order.applied_weight_slab = pricing.applied_weight_slab
+        order.pricing_zone = pricing.zone
+        order.is_manual_freight = pricing.is_manual_freight
+
 
     order.barcode = generate_barcode_base64(
         order.order_number
