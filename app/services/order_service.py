@@ -759,7 +759,7 @@ async def create_order(
     order.applicable_weight_kg = round(applicable, 2)
     caller_role = await _get_caller_role_name(db, current_user.id)
     user_permissions = await get_user_permissions(db, current_user.id)
-    can_exempt_gst = (caller_role == "super admin") or ("orders:create" in user_permissions)
+    can_exempt_gst = (caller_role == "super_admin") or ("orders:create" in user_permissions)
     is_gst_exempt = data.is_gst_exempt if can_exempt_gst else False
 
     pricing = await calculate_order_shipping_charge(
@@ -2097,7 +2097,7 @@ async def update_order(
         if data.is_gst_exempt is not None:
             user_permissions = await get_user_permissions(db, current_user.id)
             caller_role = await _get_caller_role_name(db, current_user.id)
-            can_exempt_gst = (caller_role == "super admin") or ("orders:create" in user_permissions)
+            can_exempt_gst = (caller_role == "super_admin") or ("orders:create" in user_permissions)
             is_gst_exempt = data.is_gst_exempt if can_exempt_gst else False
             order.is_gst_exempt = is_gst_exempt
         else:
