@@ -262,6 +262,7 @@ def _build_order_out(order: Order) -> OrderOut:
         freight_charge=float(order.freight_charge),
         freight_gst=float(order.freight_gst),
         total_freight=float(order.total_freight),
+        is_gst_exempt=order.is_gst_exempt,
         applied_weight_slab=float(order.applied_weight_slab) if order.applied_weight_slab is not None else None,
         pricing_zone=order.pricing_zone,
         is_manual_freight=order.is_manual_freight,
@@ -781,6 +782,7 @@ async def create_order(
     order.applied_weight_slab = pricing.applied_weight_slab
     order.pricing_zone = pricing.zone
     order.is_manual_freight = pricing.is_manual_freight
+    order.is_gst_exempt = is_gst_exempt
     order.manual_freight_reason = None
 
     # Generate barcode from order number
@@ -2097,8 +2099,9 @@ async def update_order(
             caller_role = await _get_caller_role_name(db, current_user.id)
             can_exempt_gst = (caller_role == "super admin") or ("orders:create" in user_permissions)
             is_gst_exempt = data.is_gst_exempt if can_exempt_gst else False
+            order.is_gst_exempt = is_gst_exempt
         else:
-            is_gst_exempt = (order.freight_charge > 0 and order.freight_gst == 0)
+            is_gst_exempt = order.is_gst_exempt
             
         pricing = await calculate_order_shipping_charge(
             db,

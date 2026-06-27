@@ -285,6 +285,7 @@ class OrderOut(BaseModel):
     freight_charge: float = 0
     freight_gst: float = 0
     total_freight: float = 0
+    is_gst_exempt: bool = False
     applied_weight_slab: Optional[float] = None
     pricing_zone: Optional[str] = None
     is_manual_freight: bool = False

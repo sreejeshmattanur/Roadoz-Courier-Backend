@@ -108,6 +108,7 @@ class Order(Base):
     applied_weight_slab: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
     pricing_zone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_manual_freight: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
+    is_gst_exempt: Mapped[bool] = mapped_column(default=False, server_default=text("0"))
     manual_freight_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     @hybrid_property
