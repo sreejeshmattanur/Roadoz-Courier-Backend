@@ -10,7 +10,7 @@ from app.models.order import (Order,OrderItem,OrderPackage,BagOrder,ConsigneeToD
 from app.models.notification import Notification
 
 from app.core.database import get_db
-from app.dependencies.role_checker import get_current_user, require_permission
+from app.dependencies.role_checker import get_current_user, require_permission, get_user_permissions
 from fastapi import HTTPException, status
 from sqlalchemy import select, func, or_, delete, and_, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -757,7 +757,9 @@ async def create_order(
     order.total_vol_weight_kg = round(total_vol, 2)
     order.applicable_weight_kg = round(applicable, 2)
     caller_role = await _get_caller_role_name(db, current_user.id)
-    is_gst_exempt = data.is_gst_exempt if caller_role == "super admin" else False
+    user_permissions = await get_user_permissions(db, current_user.id)
+    can_exempt_gst = (caller_role == "super admin") or ("orders:create" in user_permissions)
+    is_gst_exempt = data.is_gst_exempt if can_exempt_gst else False
 
     pricing = await calculate_order_shipping_charge(
         db,
