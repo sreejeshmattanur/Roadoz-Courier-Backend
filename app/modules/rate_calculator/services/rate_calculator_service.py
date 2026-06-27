@@ -43,7 +43,11 @@ class RateCalculatorService:
             payload.service_type.value, pickup.state, delivery.state
         )
         
-        if weights.chargeable_weight > 30.0:
+        if weights.chargeable_weight == 0:
+            is_manual_freight = False
+            base_rate = 0.0
+            applied_slab = 0.0
+        elif weights.chargeable_weight > 30.0:
             is_manual_freight = True
             base_rate = 0.0
             applied_slab = 0.0

@@ -255,7 +255,7 @@ class OrderCreate(BaseModel):
     packages: List[OrderPackageCreate] = Field(..., min_length=1)
 
     service_type: ServiceType = Field(ServiceType.SURFACE)
-    is_gst_exempt: Optional[bool] = Field(False, description="Optional GST exemption for super admin")
+    is_gst_exempt: Optional[bool] = Field(False, description="Optional GST exemption for users with orders:create permission")
 
     gst_number: Optional[str] = Field(None, max_length=20)
     eway_bill_number: Optional[str] = Field(None, max_length=30)
