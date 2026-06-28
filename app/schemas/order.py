@@ -255,7 +255,7 @@ class OrderCreate(BaseModel):
     packages: List[OrderPackageCreate] = Field(..., min_length=1)
 
     service_type: ServiceType = Field(ServiceType.SURFACE)
-    is_gst_exempt: Optional[bool] = Field(False, description="Optional GST exemption for super admin")
+    is_gst_exempt: Optional[bool] = Field(False, description="Optional GST exemption for users with orders:create permission")
 
     gst_number: Optional[str] = Field(None, max_length=20)
     eway_bill_number: Optional[str] = Field(None, max_length=30)
@@ -285,6 +285,7 @@ class OrderOut(BaseModel):
     freight_charge: float = 0
     freight_gst: float = 0
     total_freight: float = 0
+    is_gst_exempt: bool = False
     applied_weight_slab: Optional[float] = None
     pricing_zone: Optional[str] = None
     is_manual_freight: bool = False
@@ -402,6 +403,7 @@ class OrderUpdate(BaseModel):
     eway_bill_number: Optional[str] = None
 
     service_type: Optional[ServiceType] = None
+    is_gst_exempt: Optional[bool] = Field(None, description="Optional GST exemption for users with orders:create permission")
     total_freight: Optional[float] = None
 
     items: Optional[List[OrderItemCreate]] = None
