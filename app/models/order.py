@@ -122,6 +122,8 @@ class Order(Base):
     # Other details
     gst_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     eway_bill_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    invoicenumber: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
     insurance: Mapped[float | None] = mapped_column(nullable=True, default=0)
     regional_area:Mapped[float | None] = mapped_column(nullable=True, default=0)
     # Barcode (base64 PNG)
