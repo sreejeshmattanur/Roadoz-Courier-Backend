@@ -108,6 +108,8 @@ DEFAULT_PERMISSIONS = [
     # Consignees
     ("consignees", "create", "Create consignees"),
     ("consignees", "view", "View consignees"),
+    ("consignees", "edit", "Edit consignees"),
+    ("consignees", "delete", "Delete consignees"),
 
     # Remittances
     ("remittances", "view", "View remittance transactions and summary"),
