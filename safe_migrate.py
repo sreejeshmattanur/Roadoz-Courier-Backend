@@ -101,12 +101,17 @@ def detect_error_type(error_output):
     return "UNKNOWN", None
 
 
-def find_safe_stamp_target(head_rev):
+def find_safe_stamp_target(head_rev, error_type):
     """
-    When the migration chain is broken, find the safest revision to stamp to.
-    We stamp to head (latest) because the database schema is usually ahead
-    of what the tracker says.
+    Find the safest revision to stamp to.
+    - For MISSING_REVISION or BROKEN_CHAIN, we stamp to the baseline revision (oldest in history)
+      so that any subsequent migrations get run.
+    - For DUPLICATE_COLUMN or DUPLICATE_TABLE, we stamp to the latest head revision.
     """
+    if error_type in ("MISSING_REVISION", "BROKEN_CHAIN"):
+        history = get_migration_history()
+        if history:
+            return history[-1]
     return head_rev
 
 
@@ -151,12 +156,13 @@ def main():
         print(f"  Error detail: {error_detail}")
 
     if error_type in ("MISSING_REVISION", "BROKEN_CHAIN", "DUPLICATE_COLUMN", "DUPLICATE_TABLE"):
-        print(f"\n── Auto-fixing: stamping database to head ({head}) ──")
-        print("  This tells Alembic that all migrations are already applied.")
+        target = find_safe_stamp_target(head, error_type)
+        print(f"\n── Auto-fixing: stamping database to {target} ──")
+        print("  This aligns Alembic version history and resolves errors.")
         print("  (The actual columns/tables already exist in the database.)")
 
         purge = error_type in ("MISSING_REVISION", "BROKEN_CHAIN")
-        if stamp_revision(head, purge=purge):
+        if stamp_revision(target, purge=purge):
             print("\n  ✓ Fix applied! Database tracker is now in sync.")
             # Verify one more time
             verify_code, verify_output = try_upgrade()
