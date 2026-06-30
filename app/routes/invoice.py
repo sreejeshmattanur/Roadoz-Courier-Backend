@@ -145,6 +145,6 @@ async def delete_invoice_endpoint(
     invoice_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("invoices:generate")),
+    _: User = Depends(require_permission("invoices:delete")),
 ):
     return await delete_invoice(db, invoice_id)
