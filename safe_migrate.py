@@ -58,10 +58,13 @@ def get_migration_history():
     return revisions
 
 
-def stamp_revision(revision):
+def stamp_revision(revision, purge=False):
     """Force-set the alembic_version tracker to a specific revision."""
     print(f"  ⚙ Stamping database to revision: {revision}")
-    code, out, err = run(f"{ALEMBIC_CMD} stamp {revision}")
+    cmd = f"{ALEMBIC_CMD} stamp {revision}"
+    if purge:
+        cmd += " --purge"
+    code, out, err = run(cmd)
     if code != 0:
         print(f"  ✗ Stamp failed: {err}")
         return False
@@ -152,7 +155,8 @@ def main():
         print("  This tells Alembic that all migrations are already applied.")
         print("  (The actual columns/tables already exist in the database.)")
 
-        if stamp_revision(head):
+        purge = error_type in ("MISSING_REVISION", "BROKEN_CHAIN")
+        if stamp_revision(head, purge=purge):
             print("\n  ✓ Fix applied! Database tracker is now in sync.")
             # Verify one more time
             verify_code, verify_output = try_upgrade()
