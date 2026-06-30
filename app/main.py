@@ -117,6 +117,7 @@ DEFAULT_PERMISSIONS = [
     # Invoices
     ("invoices", "view", "View invoices"),
     ("invoices", "generate", "Admin: generate and manage invoices"),
+     ("invoices", "delete", "Admin: delete and manage invoices"),
     # Activity Logs
     ("activity_logs", "view", "View activity logs"),
     # Additional Missing Permissions
