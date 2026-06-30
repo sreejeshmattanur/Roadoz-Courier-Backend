@@ -1432,22 +1432,24 @@ async def process_order_scan(
             raise HTTPException(status_code=409, detail="Order already delivered")
     
     # 1. Check Pickup
-    if pickup and str(pickup.pincode).strip() == gps_pincode:
-        # Check if already picked using cache or query
-        if tracking_cache and tracking_cache.get(order.id, {}).get("pickup_exists"):
+    has_pickup = False
+    if tracking_cache:
+        has_pickup = tracking_cache.get(order.id, {}).get("pickup_exists", False)
+    else:
+        existing = await db.execute(
+            select(PickupToConsignees).where(PickupToConsignees.order_id == order.id)
+        )
+        has_pickup = existing.scalar_one_or_none() is not None
+
+    if pickup and str(pickup.pincode).strip().replace(" ", "") == str(gps_pincode).strip().replace(" ", ""):
+        if has_pickup:
             raise HTTPException(status_code=409, detail="Pickup already done")
-        elif not tracking_cache:
-            existing = await db.execute(
-                select(PickupToConsignees).where(PickupToConsignees.order_id == order.id)
-            )
-            if existing.scalar_one_or_none():
-                raise HTTPException(status_code=409, detail="Pickup already done")
         
         entry = PickupToConsignees(
-            pincode=pickup.pincode,
+            pincode=gps_pincode,
             status=OrderStatus.PICKED.value,
             order_id=order.id,
-            pickup_addresses_id=pickup.id,
+            pickup_addresses_id=pickup.id if pickup else None,
             user_id=current_user.id
         )
         db.add(entry)
@@ -1469,13 +1471,13 @@ async def process_order_scan(
             "order_number": order.order_number,
             "order_status": order.status,
             "record_id": entry.id,
-            "pickup_address_id": pickup.id,
-            "pincode": pickup.pincode,
-            "city": pickup.city,
-            "state": pickup.state,
-            "address": pickup.address_line_1,
-            "contact_name": pickup.contact_name,
-            "phone": pickup.phone,
+            "pickup_address_id": pickup.id if pickup else None,
+            "pincode": gps_pincode,
+            "city": pickup.city if pickup else None,
+            "state": pickup.state if pickup else None,
+            "address": pickup.address_line_1 if pickup else None,
+            "contact_name": pickup.contact_name if pickup else None,
+            "phone": pickup.phone if pickup else None,
             "gps_pincode": gps_pincode,
             "success": True
         }
@@ -1494,7 +1496,7 @@ async def process_order_scan(
         # Check if already processed at this warehouse
         if tracking_cache and gps_pincode in tracking_cache.get(order.id, {}).get("warehouse_pincodes", set()):
             raise HTTPException(status_code=409, detail="Warehouse already processed")
-        elif not tracking_cache:
+        if not tracking_cache:
             existing = await db.execute(
                 select(WarehouseToDelivery).where(
                     WarehouseToDelivery.order_id == order.id,
@@ -1504,6 +1506,48 @@ async def process_order_scan(
             if existing.scalar_one_or_none():
                 raise HTTPException(status_code=409, detail="Warehouse already processed")
         
+        if not has_pickup:
+            # First scan at warehouse -> mark as Picked, record in both models
+            pickup_entry = PickupToConsignees(
+                pincode=gps_pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                pickup_addresses_id=pickup.id if pickup else None,
+                user_id=current_user.id
+            )
+            db.add(pickup_entry)
+            wh_entry = WarehouseToDelivery(
+                pincode=matched_warehouse.pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                warehouse_addresses_id=matched_warehouse.id,
+                user_id=current_user.id
+            )
+            db.add(wh_entry)
+            order.previous_status = order.status
+            order.status = OrderStatus.PICKED.value
+            order.updated_at = indian_time()
+            await create_notification(
+                db=db,
+                title="Order Picked",
+                message=f"Order {order.order_number} picked successfully from warehouse",
+                type="order",
+                order_id=order.id,
+            )
+            return {
+                "stage": "Picked",
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "order_status": order.status,
+                "record_id": pickup_entry.id,
+                "pincode": gps_pincode,
+                "city": matched_warehouse.city,
+                "state": matched_warehouse.state,
+                "address": matched_warehouse.address_line_1,
+                "gps_pincode": gps_pincode,
+                "success": True
+            }
+
         status = build_order_warehousestatus(len(warehouse_mappings), warehouse_index)
         entry = WarehouseToDelivery(
             pincode=matched_warehouse.pincode,
@@ -1555,7 +1599,7 @@ async def process_order_scan(
     if matched_franchise:
         if tracking_cache and gps_pincode in tracking_cache.get(order.id, {}).get("franchise_pincodes", set()):
             raise HTTPException(status_code=409, detail="Franchise already processed")
-        elif not tracking_cache:
+        if not tracking_cache:
             existing = await db.execute(
                 select(FranchiseToDelivery).where(
                     FranchiseToDelivery.order_id == order.id,
@@ -1565,6 +1609,49 @@ async def process_order_scan(
             if existing.scalar_one_or_none():
                 raise HTTPException(status_code=409, detail="Franchise already processed")
         
+        if not has_pickup:
+            # First scan at franchise -> mark as Picked, record in both models
+            pickup_entry = PickupToConsignees(
+                pincode=gps_pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                pickup_addresses_id=pickup.id if pickup else None,
+                user_id=current_user.id
+            )
+            db.add(pickup_entry)
+            fr_entry = FranchiseToDelivery(
+                pincode=matched_franchise.pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                franchise_addresses_id=matched_franchise.id,
+                user_id=current_user.id
+            )
+            db.add(fr_entry)
+            order.previous_status = order.status
+            order.status = OrderStatus.PICKED.value
+            order.updated_at = indian_time()
+            await create_notification(
+                db=db,
+                title="Order Picked",
+                message=f"Order {order.order_number} picked successfully from franchise",
+                type="order",
+                order_id=order.id,
+            )
+            return {
+                "stage": "Picked",
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "order_status": order.status,
+                "record_id": pickup_entry.id,
+                "pincode": gps_pincode,
+                "franchise_address_id": matched_franchise.id,
+                "name": matched_franchise.name,
+                "phone": matched_franchise.phone,
+                "address": matched_franchise.address,
+                "gps_pincode": gps_pincode,
+                "success": True
+            }
+
         status = build_order_franchisestatus(len(franchise_mappings), franchise_index)
         entry = FranchiseToDelivery(
             pincode=matched_franchise.pincode,
@@ -1600,9 +1687,13 @@ async def process_order_scan(
             "gps_pincode": gps_pincode,
             "success": True
         }
-    
+    print('pincode,',consignee.pincode,"===========pincode",gps_pincode)
     # 4. Check Delivery
-    if consignee and str(consignee.pincode).strip() == gps_pincode:
+    if consignee and str(consignee.pincode).strip().replace(" ", "") == str(gps_pincode).strip().replace(" ", ""):
+        print('pincode,',consignee.pincode,"===========pincode",gps_pincode)
+        if not has_pickup:
+            raise HTTPException(status_code=400, detail="Cannot deliver an order without picking it up first")
+            
         if tracking_cache and tracking_cache.get(order.id, {}).get("delivered"):
             raise HTTPException(status_code=409, detail="Already delivered")
         elif not tracking_cache:
@@ -1696,6 +1787,49 @@ async def process_order_scan(
         )
         warehouse_count = current_count_stmt.scalar() or 1
         
+        if not has_pickup:
+            # First scan at global warehouse -> mark as Picked, record in both models
+            pickup_entry = PickupToConsignees(
+                pincode=gps_pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                pickup_addresses_id=pickup.id if pickup else None,
+                user_id=current_user.id
+            )
+            db.add(pickup_entry)
+            wh_tracking = WarehouseToDelivery(
+                pincode=global_warehouse.pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                warehouse_addresses_id=global_warehouse.id,
+                user_id=current_user.id
+            )
+            db.add(wh_tracking)
+            order.previous_status = order.status
+            order.status = OrderStatus.PICKED.value
+            order.updated_at = indian_time()
+            await create_notification(
+                db=db,
+                title="Order Picked",
+                message=f"Order {order.order_number} picked successfully from warehouse",
+                type="order",
+                order_id=order.id,
+            )
+            return {
+                "stage": "Picked",
+                "type": "warehouse",
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "order_status": order.status,
+                "warehouse_id": global_warehouse.id,
+                "warehouse_name": global_warehouse.nickname,
+                "pincode": global_warehouse.pincode,
+                "city": global_warehouse.city,
+                "state": global_warehouse.state,
+                "gps_pincode": gps_pincode,
+                "success": True
+            }
+
         status = build_order_warehousestatus(warehouse_count, warehouse_count)
         
         tracking = WarehouseToDelivery(
@@ -1775,6 +1909,47 @@ async def process_order_scan(
         )
         franchise_count = current_count_stmt.scalar() or 1
         
+        if not has_pickup:
+            # First scan at global franchise -> mark as Picked, record in both models
+            pickup_entry = PickupToConsignees(
+                pincode=gps_pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                pickup_addresses_id=pickup.id if pickup else None,
+                user_id=current_user.id
+            )
+            db.add(pickup_entry)
+            fr_tracking = FranchiseToDelivery(
+                pincode=global_franchise.pincode,
+                status=OrderStatus.PICKED.value,
+                order_id=order.id,
+                franchise_addresses_id=global_franchise.id,
+                user_id=current_user.id
+            )
+            db.add(fr_tracking)
+            order.previous_status = order.status
+            order.status = OrderStatus.PICKED.value
+            order.updated_at = indian_time()
+            await create_notification(
+                db=db,
+                title="Order Picked",
+                message=f"Order {order.order_number} picked successfully from franchise",
+                type="order",
+                order_id=order.id,
+            )
+            return {
+                "stage": "Picked",
+                "type": "franchise",
+                "order_id": order.id,
+                "order_number": order.order_number,
+                "order_status": order.status,
+                "franchise_id": global_franchise.id,
+                "franchise_name": global_franchise.name,
+                "pincode": global_franchise.pincode,
+                "gps_pincode": gps_pincode,
+                "success": True
+            }
+
         status = build_order_franchisestatus(franchise_count, franchise_count)
         
         tracking = FranchiseToDelivery(
