@@ -8,6 +8,7 @@ from collections import defaultdict
 from sqlalchemy.orm import selectinload
 from app.models.order import (Order,OrderItem,OrderPackage,BagOrder,ConsigneeToDelivery,PickupToConsignees,WarehouseToDelivery,FranchiseToDelivery)
 from app.models.notification import Notification
+from app.models.invoice import InvoiceOrder
 
 from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission, get_user_permissions
@@ -2184,6 +2185,7 @@ async def delete_order(
         await db.execute(delete(PickupToConsignees).where(PickupToConsignees.order_id == order.id))
         await db.execute(delete(WarehouseToDelivery).where(WarehouseToDelivery.order_id == order.id))
         await db.execute(delete(FranchiseToDelivery).where(FranchiseToDelivery.order_id == order.id))
+        await db.execute(delete(InvoiceOrder).where(InvoiceOrder.order_id == order.id))
         await db.delete(order)
         await db.commit()
         return {"success": True,"message": f"Order {order_id} deleted successfully"}

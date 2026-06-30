@@ -20,6 +20,7 @@ from app.services.invoice_service import (
     mark_paid,
     generate_invoice_for_order,
     generate_invoice_for_bulk_order,
+    delete_invoice,
 )
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
@@ -135,3 +136,15 @@ async def mark_paid_endpoint(
     _: User = Depends(require_permission("invoices:generate")),
 ):
     return await mark_paid(db, invoice_id)
+
+
+# ── Delete invoice (admin) ────────────────────────────────────────────────
+
+@router.delete("/{invoice_id}")
+async def delete_invoice_endpoint(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _: User = Depends(require_permission("invoices:generate")),
+):
+    return await delete_invoice(db, invoice_id)
