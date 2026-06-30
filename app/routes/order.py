@@ -209,7 +209,7 @@ async def update_consignee_endpoint(
     data: ConsigneeUpdate,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("consignees:create")),
+    _: User = Depends(require_permission("consignees:edit")),
 ):
     return await update_consignee(db, consignee_id, data, current_user)
 
@@ -219,7 +219,7 @@ async def delete_consignee_endpoint(
     consignee_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
-    _: User = Depends(require_permission("consignees:create")),
+    _: User = Depends(require_permission("consignees:delete")),
 ):
     await delete_consignee(db, consignee_id, current_user)
     return Response(status_code=204)

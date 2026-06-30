@@ -8,6 +8,7 @@ from collections import defaultdict
 from sqlalchemy.orm import selectinload
 from app.models.order import (Order,OrderItem,OrderPackage,BagOrder,ConsigneeToDelivery,PickupToConsignees,WarehouseToDelivery,FranchiseToDelivery)
 from app.models.notification import Notification
+from app.models.invoice import InvoiceOrder
 
 from app.core.database import get_db
 from app.dependencies.role_checker import get_current_user, require_permission, get_user_permissions
@@ -269,6 +270,8 @@ def _build_order_out(order: Order) -> OrderOut:
         manual_freight_reason=order.manual_freight_reason,
         gst_number=order.gst_number,
         eway_bill_number=order.eway_bill_number,
+        invoicenumber=order.invoicenumber,
+        amount=order.amount,
         insurance=order.insurance,         
         regional_area=order.regional_area, 
         barcode=order.barcode,
@@ -692,6 +695,8 @@ async def create_order(
         order_value=data.order_value,
         gst_number=data.gst_number,
         eway_bill_number=data.eway_bill_number,
+        invoicenumber=data.invoicenumber,
+        amount=data.amount,
         insurance=data.insurance,
         regional_area=data.regional_area,
         status=OrderStatus.PROCESSING,
@@ -2180,6 +2185,7 @@ async def delete_order(
         await db.execute(delete(PickupToConsignees).where(PickupToConsignees.order_id == order.id))
         await db.execute(delete(WarehouseToDelivery).where(WarehouseToDelivery.order_id == order.id))
         await db.execute(delete(FranchiseToDelivery).where(FranchiseToDelivery.order_id == order.id))
+        await db.execute(delete(InvoiceOrder).where(InvoiceOrder.order_id == order.id))
         await db.delete(order)
         await db.commit()
         return {"success": True,"message": f"Order {order_id} deleted successfully"}

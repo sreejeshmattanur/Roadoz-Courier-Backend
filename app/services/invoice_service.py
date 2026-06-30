@@ -4,7 +4,7 @@ import logging
 from datetime import datetime, date
 
 from fastapi import HTTPException, status
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -46,8 +46,12 @@ async def _resolve_franchise_id(db: AsyncSession, user: User) -> str | None:
 
 
 async def _generate_invoice_number(db: AsyncSession) -> str:
-    count = (await db.execute(select(func.count()).select_from(Invoice))).scalar_one()
-    return str(count + 1)
+    from sqlalchemy import cast, Integer
+    result = await db.execute(select(func.max(cast(Invoice.invoice_number, Integer))).select_from(Invoice))
+    max_num = result.scalar_one_or_none()
+    if max_num is None:
+        return "1"
+    return str(max_num + 1)
 
 
 # ── Generate invoice (admin) ─────────────────────────────────────────────
@@ -462,3 +466,18 @@ async def mark_paid(
 
     logger.info(f"Invoice marked paid: #{invoice.invoice_number}")
     return InvoiceOut.model_validate(invoice)
+
+
+async def delete_invoice(
+    db: AsyncSession, invoice_id: str
+) -> dict:
+    result = await db.execute(select(Invoice).where(Invoice.id == invoice_id))
+    invoice = result.scalar_one_or_none()
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+        
+    await db.execute(delete(InvoiceOrder).where(InvoiceOrder.invoice_id == invoice_id))
+    await db.delete(invoice)
+    await db.commit()
+    logger.info(f"Invoice deleted: #{invoice.invoice_number}")
+    return {"success": True, "message": "Invoice deleted successfully"}
