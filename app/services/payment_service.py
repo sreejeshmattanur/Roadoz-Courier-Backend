@@ -38,4 +38,30 @@ class PaymentService:
         
         return hmac.compare_digest(generated_signature, razorpay_signature)
 
+    def create_upi_qr(self, amount: float, order_id: str, description: str = "") -> dict:
+        """
+        Create a single use UPI QR code for the given amount using Razorpay API.
+        """
+        data = {
+            "type": "upi_qr",
+            "name": "Order Payment",
+            "usage": "single_use",
+            "fixed_amount": True,
+            "payment_amount": int(amount * 100),
+            "description": description,
+            "notes": {
+                "order_id": order_id
+            }
+        }
+        return self.client.qrcode.create(data=data)
+
+    def validate_webhook_signature(self, payload: str, signature: str) -> bool:
+        """
+        Verify the signature of the razorpay webhook.
+        """
+        secret = settings.RAZORPAY_WEBHOOK_SECRET
+        if not secret:
+            return False
+        return self.client.utility.verify_webhook_signature(payload, signature, secret)
+
 payment_service = PaymentService()

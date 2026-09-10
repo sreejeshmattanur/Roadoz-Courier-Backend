@@ -79,7 +79,8 @@ class TripStatusUpdateRequest(BaseModel):
     status: str
     location: Optional[dict] = None
     timestamp: Optional[datetime] = None
-
+    reason: Optional[str] = None
+    phase: Optional[Literal["PICKUP", "DELIVERY"]] = None
 
 class VerifyPickupRequest(BaseModel):
     packageBarcode: Optional[str] = None

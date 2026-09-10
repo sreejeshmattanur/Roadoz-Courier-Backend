@@ -192,18 +192,29 @@ DEFAULT_PERMISSIONS = [
     
     # parcel order
     ("parcel", "create", "parcel orders"),
-    ("parcel", "view", "Reject orders"),  
+    ("parcel", "view", "parcel orders"),  
     ("parcel", "edit", "parcel orders"),
-    ("parcel", "delete", "Reject orders"),   
+    ("parcel", "delete", "parcel orders"),   
     
     
     ("parcelorder", "create", "parcel orders"),
-    ("parcelorder", "view", "Reject orders"),  
+    ("parcelorder", "view", "parcel orders"),  
     ("parcelorder", "edit", "parcel orders"),
-    ("parcelorder", "delete", "Reject orders"),
+    ("parcelorder", "delete", "parcel orders"),
     
     
-]
+    # parcel sender address
+    ("parcelsenders", "create", "parcel sender address"),
+    ("parcelsenders", "view", "parcel sender address"),  
+    ("parcelsenders", "edit", "parcel sender address"),
+    ("parcelsenders", "delete", "parcel sender address"),
+    
+    # parcel sender address
+    ("receiverparcel", "create", "parcel receiver address"),
+    ("receiverparcel", "view", "parcel receiver address"),  
+    ("receiverparcel", "edit", "parcel receiver address"),
+    ("receiverparcel", "delete", "parcel receiver address"),
+    ]
 
 
 async def _seed_permissions():

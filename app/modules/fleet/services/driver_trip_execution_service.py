@@ -1,3 +1,10 @@
+"""Driver trip execution — assignment-backed (confirm pickup, confirm delivery, POD=cancel).
+
+Endpoint → mobile intent (URLs unchanged):
+- POST .../verify-pickup → confirm pickup → Picked
+- POST .../verify-drop | .../complete → Confirm delivery → Delivered
+- PATCH .../status CANCELLED → mobile "POD" (cancel delivery/pickup) → Cancelled
+"""
 import uuid
 from datetime import datetime
 
@@ -7,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.driver_payment_collection import DriverPaymentCollection
 from app.models.operations import PodRecord
-from app.models.order import Order, OrderStatus
+from app.models.order import OrderStatus
 from app.modules.fleet.constants import TERMINAL_ORDER_STATUSES
 from app.modules.fleet.models.driver import Driver
 from app.modules.fleet.schemas.trip_sheet_driver import (
@@ -16,72 +23,118 @@ from app.modules.fleet.schemas.trip_sheet_driver import (
     VerifyDropRequest,
     VerifyPickupRequest,
 )
-from app.modules.fleet.services.trip_sheet_driver_service import (
-    build_trip_detail,
-    get_order_on_driver_sheet,
-    mark_sheet_in_progress,
-    maybe_complete_sheet,
+from app.modules.fleet.services.driver_assignment_runtime_service import (
+    build_assignment_trip_detail,
+    resolve_open_work,
 )
 
 
 async def get_trip_detail(db: AsyncSession, driver: Driver, order_id: str) -> dict:
-    sheet, order = await get_order_on_driver_sheet(db, driver, order_id)
-    return build_trip_detail(sheet, order)
+    kind, assignment, order = await resolve_open_work(db, driver, order_id)
+    return build_assignment_trip_detail(kind, assignment, order)
 
 
 async def update_order_status(
     db: AsyncSession, driver: Driver, order_id: str, payload: TripStatusUpdateRequest
 ) -> dict:
-    sheet, order = await get_order_on_driver_sheet(db, driver, order_id)
-    new_status = payload.status
-    order.previous_status = order.status
-    if new_status in {"IN_TRANSIT", "In_transit"}:
-        order.status = OrderStatus.IN_TRANSIT.value
-    elif new_status in {"ARRIVED_AT_DROP", "DELIVERY_COMPLETED"}:
-        order.status = OrderStatus.OFD.value
-    elif new_status == "PICKUP_COMPLETED":
-        order.status = OrderStatus.PICKED.value
-    await mark_sheet_in_progress(db, sheet)
-    await db.flush()
-    return {
-        "tripId": order.id,
-        "tripSheetId": sheet.id,
-        "status": new_status,
-        "orderStatus": order.status,
-        "updatedAt": datetime.utcnow().isoformat(),
-    }
+    kind, assignment, order = await resolve_open_work(db, driver, order_id)
+    new_status = (payload.status or "").strip().upper()
+
+    # Mobile "POD" (and any cancel) → Cancelled. Intermediate statuses are not tracked.
+    if new_status in {"CANCELLED", "CANCEL"}:
+        if order.status in TERMINAL_ORDER_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Order is already in a terminal status",
+            )
+        reason = (payload.reason or "").strip()
+        if not reason:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="reason is required when status is CANCELLED",
+            )
+        phase = (payload.phase or "").strip().upper()
+        if phase not in {"PICKUP", "DELIVERY"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="phase must be PICKUP or DELIVERY when status is CANCELLED",
+            )
+        cancelled_at = payload.timestamp or datetime.utcnow()
+        order.previous_status = order.status
+        order.status = OrderStatus.CANCELLED.value
+        assignment.status = "cancelled"
+        assignment.updated_at = cancelled_at
+        meta = dict(order.meta or {})
+        meta["cancellation"] = {
+            "reason": reason,
+            "phase": phase,
+            "timestamp": cancelled_at.isoformat(),
+            "location": payload.location,
+            "driverId": driver.id,
+            "assignmentId": assignment.id,
+            "assignmentKind": kind,
+        }
+        order.meta = meta
+        await db.flush()
+        return {
+            "tripId": order.id,
+            "tripSheetId": assignment.id,
+            "status": "CANCELLED",
+            "reason": reason,
+            "updatedAt": cancelled_at.isoformat(),
+            "message": "Trip status updated to CANCELLED successfully.",
+        }
+
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Unsupported status. Use CANCELLED only (confirm pickup/delivery via verify endpoints).",
+    )
 
 
 async def verify_pickup(
     db: AsyncSession, driver: Driver, order_id: str, payload: VerifyPickupRequest
 ) -> dict:
-    sheet, order = await get_order_on_driver_sheet(db, driver, order_id)
+    kind, assignment, order = await resolve_open_work(db, driver, order_id)
+    if kind != "pickup":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Order has a delivery assignment, not a pickup assignment",
+        )
+
+    assignment.status = "completed"
+    assignment.updated_at = datetime.utcnow()
     order.previous_status = order.status
     order.status = OrderStatus.PICKED.value
-    await mark_sheet_in_progress(db, sheet)
     await db.flush()
     return {
         "tripId": order.id,
-        "tripSheetId": sheet.id,
+        "tripSheetId": assignment.id,
         "status": "PICKUP_COMPLETED",
         "nextStep": "IN_TRANSIT",
-        "message": "Pickup confirmed. Proceed to delivery.",
+        "message": "Pickup confirmed.",
+        "orderStatus": order.status,
     }
 
 
 async def verify_drop(
     db: AsyncSession, driver: Driver, order_id: str, payload: VerifyDropRequest
 ) -> dict:
-    sheet, order = await get_order_on_driver_sheet(db, driver, order_id)
+    """Confirm delivery (mobile success path). Not the mobile 'POD' cancel action."""
+    kind, assignment, order = await resolve_open_work(db, driver, order_id)
+    if kind != "delivery":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Order has a pickup assignment, not a delivery assignment",
+        )
 
+    receiver = payload.receiverName or (order.consignee.name if order.consignee else "Receiver")
     existing = await db.execute(select(PodRecord).where(PodRecord.order_id == order.id))
     pod = existing.scalar_one_or_none()
-    receiver = payload.receiverName or (order.consignee.name if order.consignee else "Receiver")
     if pod:
         pod.receiver_name = receiver
         pod.received_at = payload.confirmedAt or datetime.utcnow()
         pod.signature_url = payload.signatureUrl
-        pod.otp_verified = bool(payload.otp)
+        pod.otp_verified = False
     else:
         db.add(
             PodRecord(
@@ -90,52 +143,58 @@ async def verify_drop(
                 receiver_name=receiver,
                 received_at=payload.confirmedAt or datetime.utcnow(),
                 delivery_staff_id=driver.user_id,
-                otp_verified=bool(payload.otp),
+                otp_verified=False,
                 signature_url=payload.signatureUrl,
             )
         )
 
-    payment_method = (order.payment_method or "Prepaid").lower()
-    payment_required = payment_method in {"cod", "to pay", "topay"}
-    if not payment_required:
-        order.previous_status = order.status
-        order.status = OrderStatus.DELIVERED.value
-        await maybe_complete_sheet(db, sheet)
-
+    assignment.status = "completed"
+    assignment.updated_at = datetime.utcnow()
+    order.previous_status = order.status
+    order.status = OrderStatus.DELIVERED.value
     await db.flush()
+
     amount = float(order.cod_amount or order.to_pay_amount or order.total_freight or 0)
     return {
         "tripId": order.id,
-        "tripSheetId": sheet.id,
+        "tripSheetId": assignment.id,
         "status": "DELIVERY_COMPLETED",
-        "paymentRequired": payment_required,
-        "paymentStatus": "PENDING" if payment_required else "PAID",
+        "paymentRequired": False,
+        "paymentStatus": "PAID" if (order.payment_method or "").lower() == "prepaid" else "PENDING",
         "amount": amount,
         "paymentMethod": order.payment_method,
-        "upiId": "roadoz@ybl" if payment_required else None,
-        "paymentReference": f"PAY-{order.order_number}" if payment_required else None,
-        "message": "Delivery confirmed." + (" Collect payment." if payment_required else ""),
+        "upiId": None,
+        "paymentReference": None,
+        "message": "Delivery confirmed.",
+        "orderStatus": order.status,
     }
 
 
 async def complete_trip(db: AsyncSession, driver: Driver, order_id: str) -> dict:
-    sheet, order = await get_order_on_driver_sheet(db, driver, order_id)
+    """Same success path as verify-drop when the app calls /complete."""
+    kind, assignment, order = await resolve_open_work(db, driver, order_id)
+    if kind != "delivery":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Complete is only for delivery assignments",
+        )
     if order.status in TERMINAL_ORDER_STATUSES and order.status != OrderStatus.DELIVERED.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order cannot be completed")
+    assignment.status = "completed"
+    assignment.updated_at = datetime.utcnow()
     order.previous_status = order.status
     order.status = OrderStatus.DELIVERED.value
-    await maybe_complete_sheet(db, sheet)
     await db.flush()
     return {"success": True, "message": "Trip completed successfully"}
 
 
 async def get_payment_info(db: AsyncSession, driver: Driver, order_id: str) -> dict:
-    sheet, order = await get_order_on_driver_sheet(db, driver, order_id)
+    kind, assignment, order = await resolve_open_work(db, driver, order_id)
     amount = float(order.cod_amount or order.to_pay_amount or order.total_freight or 0)
-    paid = (order.payment_method or "").lower() == "prepaid"
+    paid = (order.payment_method or "").lower() == "prepaid" or order.status == OrderStatus.DELIVERED.value
     return {
         "tripId": order.id,
-        "tripSheetId": sheet.id,
+        "tripSheetId": assignment.id,
         "orderId": order.order_number,
         "customerName": order.consignee.name if order.consignee else "",
         "amount": amount,
@@ -145,11 +204,12 @@ async def get_payment_info(db: AsyncSession, driver: Driver, order_id: str) -> d
         "upiId": "roadoz@ybl",
         "merchantName": "Roadoz Courier Pvt Ltd",
         "paymentReference": f"PAY-{order.order_number}",
+        "assignmentKind": kind,
     }
 
 
 async def submit_cash_payment(db: AsyncSession, driver: Driver, payload: CashPaymentRequest) -> dict:
-    sheet, order = await get_order_on_driver_sheet(db, driver, payload.orderId)
+    _kind, assignment, order = await resolve_open_work(db, driver, payload.orderId)
     ref = f"PAY-{order.order_number}"
     existing = await db.execute(
         select(DriverPaymentCollection).where(DriverPaymentCollection.payment_reference == ref)
@@ -160,7 +220,7 @@ async def submit_cash_payment(db: AsyncSession, driver: Driver, payload: CashPay
             id=str(uuid.uuid4()),
             order_id=order.id,
             driver_id=driver.id,
-            trip_sheet_id=sheet.id,
+            trip_sheet_id=None,
             amount=payload.amount,
             payment_method="Cash",
             payment_reference=ref,
@@ -171,9 +231,10 @@ async def submit_cash_payment(db: AsyncSession, driver: Driver, payload: CashPay
     else:
         record.status = "SUCCESS"
         record.paid_at = payload.collectedAt or datetime.utcnow()
+    assignment.status = "completed"
+    assignment.updated_at = datetime.utcnow()
     order.previous_status = order.status
     order.status = OrderStatus.DELIVERED.value
-    await maybe_complete_sheet(db, sheet)
     await db.flush()
     return {"success": True, "message": "Cash collected successfully"}
 

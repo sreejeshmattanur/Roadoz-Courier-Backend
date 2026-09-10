@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Numeric, Integer, text
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Numeric, Integer, text, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Optional
 from app.core.database import Base
@@ -22,19 +22,20 @@ class OrderStatus(str, Enum):
     IN_TRANSIT = "In_transit"
     NDR = "Ndr"
     OFD = "Ofd"
-    OUT_FOR_DELIVERY = "Out_for_delivery"
+    OUT_FOR_DELIVERY = "Out_for_delivery"  # legacy alias; prefer OFD for new writes
     DELIVERED = "Delivered"
     RTO_IN_TRANSIT = "Rto_in_transit"
     RTO_DELIVERED = "Rto_delivered"
     RETURNED = "Returned"
     CANCELLED = "Cancelled"
     LOST = "Lost"
-    PICKED = "Picked"           
+    PICKED = "Picked"
     DISPATCHED = "Dispatched"
     WAREHOUSE = "Warehouse"
     PENDING_APPROVAL = "Pending"
     REJECTED = "Rejected"
     PICKUP_ASSIGNED = "pickup_assigned"
+
 
 class PaymentStatus(str, Enum):
     PAYMENT_PENDING = "Payment_pending"
@@ -99,12 +100,17 @@ class Order(Base):
     bag_orders = relationship("BagOrder", back_populates="order",cascade="all, delete-orphan", lazy="selectin")
     # Payment
     payment_method: Mapped[str] = mapped_column(String(20), nullable=False)  # COD | Prepaid | To Pay | Credit
-    payment_status: Mapped[str] = mapped_column(String(50), nullable=True, default=PaymentStatus.PAYMENT_PENDING.value)
+    payment_status: Mapped[str | None] = mapped_column(String(50), nullable=True, server_default=text("'Payment_pending'"))  # Payment_pending | created | paid | failed
     cod_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when COD
     prepaid_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when Prepaid
     to_pay_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when To Pay
     credit_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)  # required when Credit
     rov: Mapped[str] = mapped_column(String(20), nullable=False)  # owner_risk | carrier_risk
+
+    # Razorpay Payment QR
+    razorpay_qr_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    razorpay_qr_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    razorpay_qr_upi_uri: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Product summary
     order_value: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
@@ -161,6 +167,13 @@ class Order(Base):
     #             nullable=False,
     #             default=OrderStatus.PROCESSING
     #         )
+
+    # Cancellation Details (POD Exception)
+    cancellation_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    cancellation_phase: Mapped[str | None] = mapped_column(String(50), nullable=True)   # PICKUP | DELIVERY
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    meta: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_by: Mapped[str] = mapped_column(
         String(36), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )

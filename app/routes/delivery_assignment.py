@@ -182,9 +182,9 @@ async def create_delivery_assignment(
         otp = _generate_otp()
         otp_expiry = datetime.utcnow() + timedelta(minutes=settings.OTP__MINUTES)
 
-        # Promote order to OUT_FOR_DELIVERY
+        # Promote order to Ofd (out for delivery)
         order.previous_status = order.status
-        order.status = OrderStatus.OUT_FOR_DELIVERY.value
+        order.status = OrderStatus.OFD.value
 
         # Persist the assignment
         assignment = DeliveryAssignment(
@@ -415,9 +415,9 @@ async def cancel_delivery_assignment(
     assignment.status = "cancelled"
     assignment.updated_at = datetime.utcnow()
 
-    # Revert order back to In_transit
+    # Revert order back to In_transit when still OFD / Out_for_delivery
     order = (await db.execute(select(Order).where(Order.id == assignment.order_id))).scalar_one_or_none()
-    if order and order.status == OrderStatus.OUT_FOR_DELIVERY.value:
+    if order and order.status in {OrderStatus.OFD.value, OrderStatus.OUT_FOR_DELIVERY.value}:
         order.status = OrderStatus.IN_TRANSIT.value
 
     await db.commit()

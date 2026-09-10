@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator, computed_field
+from pydantic import BaseModel, Field, model_validator, computed_field, field_validator
 from typing import Optional, List, Literal
 from datetime import datetime
 from enum import Enum
@@ -336,7 +336,7 @@ class OrderOut(BaseModel):
     pickup_address: PickupAddressOut
     consignee: ConsigneeOut
     payment_method: str
-    payment_status:str 
+    payment_status: Optional[str] = "Payment_pending"
     cod_amount: Optional[float] = None
     to_pay_amount: Optional[float] = None
     credit_amount: Optional[float] = None

@@ -26,9 +26,9 @@ class ParcelServiceType(str, Enum):
     EXPRESS = "Express"
 
 
-# ── Nested sender / receiver ──────────────────────────────────────────────────
+# ── Senders ──────────────────────────────────────────────────────────────────
 
-class ParcelSenderIn(BaseModel):
+class ParcelSenderCreate(BaseModel):
     name: Optional[str] = Field(None, max_length=150)
     mobile: Optional[str] = Field(None, max_length=20)
     alternate_mobile: Optional[str] = Field(None, max_length=20)
@@ -38,9 +38,10 @@ class ParcelSenderIn(BaseModel):
     pincode: Optional[str] = Field(None, max_length=10)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
 
 
-class ParcelReceiverIn(BaseModel):
+class ParcelSenderUpdate(BaseModel):
     name: Optional[str] = Field(None, max_length=150)
     mobile: Optional[str] = Field(None, max_length=20)
     alternate_mobile: Optional[str] = Field(None, max_length=20)
@@ -50,13 +51,96 @@ class ParcelReceiverIn(BaseModel):
     pincode: Optional[str] = Field(None, max_length=10)
     city: Optional[str] = Field(None, max_length=100)
     state: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+
+
+class ParcelSenderOut(BaseModel):
+    id: str
+    name: Optional[str] = None
+    mobile: Optional[str] = None
+    alternate_mobile: Optional[str] = None
+    email: Optional[str] = None
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    pincode: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    franchise_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class ParcelSenderListResponse(BaseModel):
+    items: List[ParcelSenderOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+# ── Receivers ────────────────────────────────────────────────────────────────
+
+class ParcelReceiverCreate(BaseModel):
+    name: Optional[str] = Field(None, max_length=150)
+    mobile: Optional[str] = Field(None, max_length=20)
+    alternate_mobile: Optional[str] = Field(None, max_length=20)
+    email: Optional[str] = Field(None, max_length=255)
+    address_line_1: Optional[str] = Field(None, max_length=500)
+    address_line_2: Optional[str] = Field(None, max_length=500)
+    pincode: Optional[str] = Field(None, max_length=10)
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+
+
+class ParcelReceiverUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=150)
+    mobile: Optional[str] = Field(None, max_length=20)
+    alternate_mobile: Optional[str] = Field(None, max_length=20)
+    email: Optional[str] = Field(None, max_length=255)
+    address_line_1: Optional[str] = Field(None, max_length=500)
+    address_line_2: Optional[str] = Field(None, max_length=500)
+    pincode: Optional[str] = Field(None, max_length=10)
+    city: Optional[str] = Field(None, max_length=100)
+    state: Optional[str] = Field(None, max_length=100)
+    country: Optional[str] = Field(None, max_length=100)
+
+
+class ParcelReceiverOut(BaseModel):
+    id: str
+    name: Optional[str] = None
+    mobile: Optional[str] = None
+    alternate_mobile: Optional[str] = None
+    email: Optional[str] = None
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    pincode: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
+    franchise_id: Optional[str] = None
+    warehouse_id: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+
+class ParcelReceiverListResponse(BaseModel):
+    items: List[ParcelReceiverOut]
+    total: int
+    page: int
+    limit: int
+    pages: int
 
 
 # ── Create ────────────────────────────────────────────────────────────────────
 
 class ParcelOrderCreate(BaseModel):
-    sender: Optional[ParcelSenderIn] = None
-    receiver: Optional[ParcelReceiverIn] = None
+    sender_id: Optional[str] = None
+    receiver_id: Optional[str] = None
 
     payment_method: Optional[ParcelPaymentMethod] = None
     cod_amount: Optional[float] = Field(None, ge=0)
@@ -96,8 +180,8 @@ class ParcelOrderCreate(BaseModel):
 # ── Update (all optional) ─────────────────────────────────────────────────────
 
 class ParcelOrderUpdate(BaseModel):
-    sender: Optional[ParcelSenderIn] = None
-    receiver: Optional[ParcelReceiverIn] = None
+    sender_id: Optional[str] = None
+    receiver_id: Optional[str] = None
 
     payment_method: Optional[ParcelPaymentMethod] = None
     cod_amount: Optional[float] = Field(None, ge=0)
@@ -134,40 +218,17 @@ class ParcelOrderUpdate(BaseModel):
 
 # ── Out (response) ────────────────────────────────────────────────────────────
 
-class CreatorOut(BaseModel):
-    id: str
-    name: Optional[str] = None
-    email: Optional[str] = None
-    model_config = {"from_attributes": True}
-
-
 class ParcelOrderOut(BaseModel):
     id: str
     order_number: str
     barcode: Optional[str] = None
     status: str
 
-    # Sender
-    sender_name: Optional[str] = None
-    sender_mobile: Optional[str] = None
-    sender_alternate_mobile: Optional[str] = None
-    sender_email: Optional[str] = None
-    sender_address_line_1: Optional[str] = None
-    sender_address_line_2: Optional[str] = None
-    sender_pincode: Optional[str] = None
-    sender_city: Optional[str] = None
-    sender_state: Optional[str] = None
-
-    # Receiver
-    receiver_name: Optional[str] = None
-    receiver_mobile: Optional[str] = None
-    receiver_alternate_mobile: Optional[str] = None
-    receiver_email: Optional[str] = None
-    receiver_address_line_1: Optional[str] = None
-    receiver_address_line_2: Optional[str] = None
-    receiver_pincode: Optional[str] = None
-    receiver_city: Optional[str] = None
-    receiver_state: Optional[str] = None
+    sender_id: Optional[str] = None
+    receiver_id: Optional[str] = None
+    
+    sender: Optional[ParcelSenderOut] = None
+    receiver: Optional[ParcelReceiverOut] = None
 
     # Payment
     payment_method: Optional[str] = None
@@ -224,3 +285,4 @@ class ParcelOrderListResponse(BaseModel):
 
 class ParcelOrderBarcodeListRequest(BaseModel):
     barcodes: List[str] = Field(..., description="List of parcel order barcodes")
+

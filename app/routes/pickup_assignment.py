@@ -392,9 +392,21 @@ async def verify_pickup_otp(
     assignment.otp_status = "verified"
     assignment.status = "completed"
     assignment.updated_at = datetime.utcnow()
+
+    order = assignment.order
+    if order is None:
+        order = (await db.execute(select(Order).where(Order.id == assignment.order_id))).scalar_one_or_none()
+    if order:
+        order.previous_status = order.status
+        order.status = OrderStatus.PICKED.value
+
     await db.commit()
 
-    return {"message": "OTP verified successfully. Pickup marked as completed.", "assignment_id": assignment_id}
+    return {
+        "message": "OTP verified successfully. Pickup marked as completed.",
+        "assignment_id": assignment_id,
+        "orderStatus": order.status if order else None,
+    }
 
 
 

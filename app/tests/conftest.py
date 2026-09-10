@@ -31,6 +31,7 @@ async def _patch_sqlite_dev_schema():
         ("trip_sheets", "started_at", "DATETIME"),
         ("trip_sheets", "completed_at", "DATETIME"),
         ("trip_sheets", "updated_at", "DATETIME"),
+        ("orders", "meta", "JSON"),
     ]
     drop_columns = [
         ("drivers", "public_id"),

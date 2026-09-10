@@ -2514,6 +2514,7 @@ async def parcel_order_report(
     franchise_id_filter=None,
 ) -> dict:
     from app.models.parcel_order import ParcelOrder
+    from sqlalchemy.orm import selectinload
     from app.services.order_service import _resolve_franchise_id, _resolve_warehouse_id
 
     resolved_franchise_id = await _resolve_franchise_id(db, current_user)
@@ -2536,7 +2537,10 @@ async def parcel_order_report(
 
     where = and_(*filters) if filters else True
     rows = (await db.execute(
-        select(ParcelOrder).where(where).order_by(ParcelOrder.created_at.desc())
+        select(ParcelOrder)
+        .options(selectinload(ParcelOrder.sender), selectinload(ParcelOrder.receiver))
+        .where(where)
+        .order_by(ParcelOrder.created_at.desc())
     )).scalars().all()
 
     items = []
@@ -2552,10 +2556,10 @@ async def parcel_order_report(
             "order_number": r.order_number or "",
             "date": r.created_at.strftime("%Y-%m-%d %H:%M") if r.created_at else "",
             "status": r.status or "",
-            "sender_name": r.sender_name or "",
-            "sender_city": r.sender_city or "",
-            "receiver_name": r.receiver_name or "",
-            "receiver_city": r.receiver_city or "",
+            "sender_name": r.sender.name if r.sender and r.sender.name else "",
+            "sender_city": r.sender.city if r.sender and r.sender.city else "",
+            "receiver_name": r.receiver.name if r.receiver and r.receiver.name else "",
+            "receiver_city": r.receiver.city if r.receiver and r.receiver.city else "",
             "payment_method": r.payment_method or "",
             "service_type": r.service_type or "",
             "freight_charge": _to_float(r.freight_charge),

@@ -16,22 +16,16 @@ from reportlab.pdfgen import canvas
 # Column configurations for all report types
 REPORT_CONFIGS = {
     "Daily Booking Report": {
-        "headers": [
-            "Booking No", "Sender", "Receiver", "Destination", "Weight (kg)",
-            "PM Amount", "Insurance", "Regional Area", "Base Freight", "GST Amount", "Total Amount", "Status", "Payment Method"
-        ],
-        "keys": [
-            "booking_no", "sender", "receiver", "destination", "weight",
-            "payment_method_amount", "insurance", "regional_area", "base_freight", "gst_amount", "amount", "status", "payment_method"
-        ]
+        "headers": ["Booking No", "Sender", "Receiver", "Destination", "Weight (kg)", "Amount", "Status"],
+        "keys": ["booking_no", "sender", "receiver", "destination", "weight", "amount", "status"]
     },
     "Customer Wise Booking Report": {
-        "headers": ["Customer", "Payment Method", "Bookings", "Base Freight", "GST", "Insurance", "Regional Area", "Pending Amount", "Total Revenue"],
-        "keys": ["customer", "payment_method", "bookings", "base_freight", "gst_amount", "insurance", "regional_area", "pending_amount", "revenue"]
+        "headers": ["Customer", "Bookings", "Revenue", "Pending Amount"],
+        "keys": ["customer", "bookings", "revenue", "pending_amount"]
     },
     "Service Type Report": {
-        "headers": ["Service Type", "Payment Method", "Total Bookings", "Base Freight", "GST", "Insurance", "Regional Area", "Total Revenue"],
-        "keys": ["service_type", "payment_method", "total_bookings", "base_freight", "gst_amount", "insurance", "regional_area", "revenue"]
+        "headers": ["Service Type", "Total Bookings", "Revenue"],
+        "keys": ["service_type", "total_bookings", "revenue"]
     },
     "Delivery Status Report": {
         "headers": ["AWB No", "Receiver", "Delivery Date", "Status", "POD"],

@@ -31,6 +31,7 @@ from app.modules.fleet.services.driver_trip_execution_service import (
     verify_pickup,
 )
 from app.modules.fleet.services.driver_scan_service import execute_scan_for_driver, lookup_barcode_for_driver
+from app.modules.fleet.services.driver_dashboard_service import get_driver_dashboard
 from app.modules.fleet.services.trip_sheet_driver_service import (
     export_order_history,
     list_active_trips,
@@ -41,6 +42,14 @@ from app.modules.fleet.services.trip_sheet_driver_service import (
 from app.services.export_service import export_to_csv, export_to_excel, export_to_pdf
 
 router = APIRouter(prefix="/api/v1/driver", tags=["Driver Runtime"])
+
+
+@router.get("/dashboard", response_model=SuccessDataResponse)
+async def driver_dashboard(
+    driver: Driver = Depends(require_driver),
+    db: AsyncSession = Depends(get_db),
+):
+    return SuccessDataResponse(success=True, data=await get_driver_dashboard(db, driver))
 
 
 @router.patch("/availability", response_model=SuccessDataResponse)
@@ -120,7 +129,9 @@ async def trip_status(
     driver: Driver = Depends(require_driver),
     db: AsyncSession = Depends(get_db),
 ):
-    return SuccessDataResponse(success=True, data=await update_order_status(db, driver, order_id, payload))
+    data = await update_order_status(db, driver, order_id, payload)
+    message = data.pop("message", None)
+    return SuccessDataResponse(success=True, message=message, data=data)
 
 
 @router.post("/trips/{order_id}/verify-pickup", response_model=SuccessDataResponse)
